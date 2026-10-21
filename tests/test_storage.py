@@ -45,3 +45,47 @@ class StorageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ColumnsAndMultilineTests(unittest.TestCase):
+    def test_columns_render_as_one_row_table_holding_nested_blocks(self):
+        from composer_lib.storage import render, attachments_for, validate
+        b = {"type": "columns", "cols": [
+            [{"type": "heading", "level": 3, "text": "O1"}, {"type": "paragraph", "text": "실측 표"}],
+            [{"type": "image", "src": "2026-W42/picked/a.png", "caption": "그림"}],
+            [{"type": "bullets", "items": ["하나", "둘"]}]]}
+        x = render([b])
+        self.assertIsNone(validate(x))
+        self.assertEqual(x.count("<td"), 3)
+        self.assertIn("<h3>O1</h3><p>실측 표</p>", x)
+        self.assertIn('ri:filename="2026-W42_picked_a.png"', x)
+        self.assertIn("<ul><li>하나</li><li>둘</li></ul>", x)
+        self.assertEqual(attachments_for([b]), {"2026-W42_picked_a.png": "2026-W42/picked/a.png"})
+
+    def test_callout_keeps_its_line_breaks(self):
+        from composer_lib.storage import render, validate
+        x = render([{"type": "callout", "text": "**실제 표** 40 dB\n**직접음** -4.5 dB"}])
+        self.assertIsNone(validate(x))
+        self.assertIn("<strong>실제 표</strong> 40 dB<br/><strong>직접음</strong> -4.5 dB", x)
+
+    def test_paste_html_lays_columns_out_side_by_side(self):
+        import tempfile
+        from pathlib import Path
+        from composer_lib.pastehtml import paste_html
+        with tempfile.TemporaryDirectory() as tmp:
+            html, manual = paste_html("t", [{"type": "columns", "cols": [
+                [{"type": "paragraph", "text": "왼쪽"}], [{"type": "callout", "text": "가운데\n둘째 줄"}], [{"type": "paragraph", "text": "오른쪽"}]]}], Path(tmp))
+        self.assertEqual(html.count("<td"), 3)
+        self.assertIn("<p>왼쪽</p>", html)
+        self.assertIn("가운데<br>둘째 줄", html)
+        self.assertEqual(manual, [])
+
+    def test_drafts_accept_columns_blocks(self):
+        import tempfile
+        from pathlib import Path
+        from composer_lib.drafts import Drafts
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Drafts(Path(tmp)); draft = d.create("t")
+            draft["blocks"] = [{"id": "b1", "type": "columns", "cols": [[{"type": "paragraph", "text": "x"}]]}]
+            saved = d.save(draft)
+            self.assertEqual(saved["blocks"][0]["type"], "columns")

@@ -36,6 +36,22 @@
     return (s.backgroundColor !== "rgba(0, 0, 0, 0)" && s.backgroundColor !== bg && s.backgroundColor !== pbg) || parseFloat(s.borderLeftWidth) > 1 || parseFloat(s.borderTopWidth) > 0 ||
       /card|callout|box|note|panel|alert|tip|warn|claim|info|finding|highlight|summary/i.test(el.className || ""); };
 
+  // children laid out side by side (a grid or flex row): [[a, b, c], [d, e, f]], or null when stacked
+  function rowsOf(el) {
+    if (!el || el === document.body || !isBlock(el)) return null;
+    const kids = blockKids(el).filter(k => txt(k) || k.querySelector(MEDIA));
+    if (kids.length < 2 || kids.length > 24) return null;
+    const rects = kids.map(k => k.getBoundingClientRect());
+    if (rects.some(r => r.width < 90 || r.height < 16)) return null;
+    const rows = [];
+    kids.forEach((k, i) => { const r = rects[i]; const row = rows.find(rw => Math.abs(rw.top - r.top) < 12); row ? row.items.push([k, r]) : rows.push({ top: r.top, items: [[k, r]] }); });
+    rows.sort((a, b) => a.top - b.top);
+    const n = rows[0].items.length;
+    if (n < 2 || n > 4 || !rows.slice(0, -1).every(rw => rw.items.length === n) || rows.at(-1).items.length > n) return null;
+    return rows.map(rw => rw.items.sort((a, b) => a[1].left - b[1].left).map(x => x[0]));
+  }
+  const richRow = rows => rows.flat().some(k => boxed(k) || k.querySelector(MEDIA) || txt(k).length > 80);
+
   // a figure box: holds exactly one piece of media and at most a short caption
   function figureMedia(box) {
     if (!box || box === document.body || box.querySelector("table, ul, ol")) return null;
@@ -48,6 +64,8 @@
     if (!box || box === document.body || !isBlock(box) || !boxed(box)) return null;
     if (box.querySelector(MEDIA + ", table, ul, ol") || txt(box).length > 700) return null;
     const kids = blockKids(box).filter(k => txt(k));
+    if (kids.some(k => boxed(k) && blockKids(k).length)) return null;      // a region holding cards, not a card
+    const rows = rowsOf(box); if (rows && richRow(rows)) return null;
     if (kids.length >= 2 && kids.length <= 8) {
       const first = kids[0];
       const titled = isHeadingLike(first) || (first.querySelector(":scope > b, :scope > strong") && txt(first).length <= 120);
@@ -90,6 +108,10 @@
     const nodes = collect(span);
     return unitOf("section", span.length > 1 ? `섹션 ${nodes.length}개` : "제목", whole ? [parent] : span, nodes);
   }
+  function closestCard(leaf) {
+    for (let cur = leaf, i = 0; cur && cur !== document.body && i < 4; cur = cur.parentElement, i++) { const c = cardOf(cur); if (c) return c; }
+    return null;
+  }
   function leafOf(el) {
     if (!(el instanceof Element) || el.closest(SKIP)) return null;
     const svg = el.closest("svg"); if (svg) return svg;
@@ -109,8 +131,8 @@
       return listUnit(li.closest("ul, ol"));
     }
     const pre = leaf.closest("pre"); if (pre) return unitOf("code", "코드", [pre], [{ kind: "code", el: pre }]);
-    const card = cardOf(leaf) || cardOf(leaf.parentElement);
-    if (card && !isHeadingLike(leaf)) return unitOf("callout", "강조 상자", [card.el], [{ kind: "callout", ...card }]);
+    const card = closestCard(leaf);                                 // anywhere inside a card picks the card; Alt widens to its row
+    if (card) return unitOf("callout", "강조 상자", [card.el], [{ kind: "callout", ...card }]);
     if (isHeadingLike(leaf)) return sectionUnit(leaf);
     const q = leaf.closest("blockquote"); if (q) return unitOf("quote", "인용", [q], [{ kind: "text", el: q }]);
     return unitOf("text", "문단", [leaf], [{ kind: "text", el: leaf }]);
@@ -123,7 +145,8 @@
     while (box && box !== document.body && (blockKids(box).filter(k => txt(k) || k.querySelector(MEDIA)).length < 2 || txt(box).length === txt(base).length)) box = box.parentElement;
     if (!box || box === document.body) return u;
     const nodes = collect([box]);
-    return unitOf("region", `구역 ${nodes.length}개`, [box], nodes);
+    const label = nodes.length && nodes.every(n => n.kind === "columns") ? `가로 ${nodes[0].cells.length}칸${nodes.length > 1 ? ` × ${nodes.length}줄` : ""}` : `구역 ${nodes.length}개`;
+    return unitOf(nodes.every(n => n.kind === "columns") ? "columns" : "region", label, [box], nodes);
   }
   // flatten elements into content nodes, in reading order
   function collect(els) {
@@ -137,6 +160,8 @@
       if (T === "UL" || T === "OL") { const lis = [...el.children]; if (lis.length && lis.every(li => cardOf(li))) { lis.forEach(li => out.push({ kind: "callout", ...cardOf(li) })); } else out.push({ kind: "list", el }); return; }
       if (T === "PRE") { out.push({ kind: "code", el }); return; }
       if (isHeadingLike(el)) { out.push({ kind: "heading", el, level: level(el) ?? 3 }); return; }
+      const rows = isLeafText(el) ? null : rowsOf(el);
+      if (rows && (richRow(rows) || !cardOf(el))) { rows.forEach(r => out.push({ kind: "columns", el, cells: r.map(cell => collect([cell])) })); return; }
       const card = isLeafText(el) ? null : cardOf(el);
       if (card) { out.push({ kind: "callout", ...card }); return; }
       if (isLeafText(el)) { out.push({ kind: "text", el }); return; }
@@ -197,8 +222,9 @@
   }
   const listItems = list => [...list.children].filter(c => tagOf(c) === "LI").map(li => txt(li).replace(/\s*\n\s*/g, " — ")).filter(Boolean);
   async function describe(n) {
-    const el = n.el, T = tagOf(el);
+    const el = n.el, T = el ? tagOf(el) : "";
     switch (n.kind) {
+      case "columns": { const cells = []; for (const cell of n.cells) { const items = []; for (const x of cell) items.push(await describe(x)); cells.push(items); } return { t: "columns", cells }; }
       case "image": {
         if (T === "IMG") return { t: "image", src: abs(el.getAttribute("src") || ""), data: await imgData(el), caption: n.caption || el.alt || "" };
         if (T === "SVG") return { t: "image", data: await svgData(el), caption: n.caption || el.getAttribute("aria-label") || el.querySelector("title")?.textContent || "" };

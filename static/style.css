@@ -149,6 +149,7 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 
 /* result page opened in the middle column; the draft stays visible on the right */
 .col.mid.viewing { padding:0; overflow:hidden; display:flex; flex-direction:column; }
+.cols.viewing { grid-template-columns: 200px minmax(560px, 52%) 1fr; }   /* pages keep their grid layouts at this width */
 .pageView { flex:1; display:flex; flex-direction:column; min-height:0; }
 .pvHead { display:flex; align-items:center; gap:6px 8px; padding:8px 12px; border-bottom:1px solid var(--line); background:var(--panel); font-size:13px; flex-wrap:wrap; }
 .pvHead b { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; flex:1 1 140px; }
@@ -165,3 +166,11 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 .grp:hover .grpHead button { opacity:1; }
 .grpHead button:hover { border-color:var(--line); }
 .grpHead .handle { position:absolute; left:2px; top:0; cursor:grab; color:var(--sub); letter-spacing:-2px; }
+
+/* columns block: cells side by side, text editable in place */
+.block .colgrid { display:grid; gap:10px; }
+.block .colcell { border:1px dashed var(--line); border-radius:6px; padding:6px 8px; min-width:0; display:flex; flex-direction:column; gap:4px; }
+.block .colcell .nh { font-weight:600; font-size:15px; }
+.block .colcell img { max-width:100%; max-height:260px; }
+.block .colcell .callout { font-size:13px; }
+.preview table.cols { width:100%; } .preview table.cols td { vertical-align:top; }

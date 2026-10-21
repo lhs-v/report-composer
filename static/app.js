@@ -209,14 +209,14 @@
     pvReturn = { tab: $(".midTabs button[data-mid].active")?.dataset.mid || "reader", scroll: $(".col.mid").scrollTop };
     $("#pvTitle").textContent = title || src.split("/").slice(-2, -1)[0]; $("#pvTitle").title = title || "";
     $("#pvFrame").src = `/page/${src}`;
-    $(".col.mid").classList.add("viewing"); $("#pageView").hidden = false;
+    $(".col.mid").classList.add("viewing"); $(".cols").classList.add("viewing"); $("#pageView").hidden = false;
     $(".midTabs").hidden = true; $(".midHint").hidden = true; $("#reader").hidden = true; $("#library").hidden = true;
     renderPickCount();
   }
   function closePageViewer() {
     if (!pvSrc) return;
     $("#pvFrame").src = "about:blank"; pvSrc = null;
-    $(".col.mid").classList.remove("viewing"); $("#pageView").hidden = true; $(".midTabs").hidden = false; $(".midHint").hidden = false;
+    $(".col.mid").classList.remove("viewing"); $(".cols").classList.remove("viewing"); $("#pageView").hidden = true; $(".midTabs").hidden = false; $(".midHint").hidden = false;
     const lib = pvReturn?.tab === "library"; $("#reader").hidden = lib; $("#library").hidden = !lib;
     requestAnimationFrame(() => { $(".col.mid").scrollTop = pvReturn?.scroll || 0; });
   }
@@ -246,7 +246,12 @@
       case "table": return m.rows?.length ? { type: "table", rows: m.rows, header: !!m.header } : null;
       case "list": return m.items?.length ? { type: "bullets", items: m.items } : null;
       case "heading": return m.text ? { type: "heading", level: m.level <= 2 ? 2 : 3, text: m.text } : null;
-      case "callout": return (m.title || m.text) ? { type: "callout", text: (m.title ? `**${m.title}** ` : "") + (m.text || "").replace(/\s*\n\s*/g, " ") } : null;
+      case "callout": return (m.title || m.text) ? { type: "callout", text: (m.title ? `**${m.title}**\n` : "") + (m.text || "").replace(/[ \t]*\n[ \t]*/g, "\n").trim() } : null;
+      case "columns": {
+        const cols = [];
+        for (const cell of m.cells || []) { const bs = []; for (const it of cell) { const nb = await blockFor(it, week); if (nb) bs.push({ ...nb, id: uid() }); } cols.push(bs); }
+        return cols.some(c => c.length) ? { type: "columns", cols } : null;
+      }
       case "code": return m.text ? { type: "paragraph", text: "`" + m.text.replace(/`/g, "'") + "`" } : null;
       default: return m.text ? { type: "paragraph", text: m.text.replace(/\s*\n\s*/g, " ") } : null;
     }
@@ -356,8 +361,28 @@
       case "divider": return `<hr>`;
       case "callout": return `<div class="callout" contenteditable="true" data-field="text" data-ph="강조할 내용">${esc(b.text)}</div>`;
       case "table": return `<table class="tbl">${(b.rows || []).map((r, ri) => `<tr>${r.map((c, ci) => { const tag = ri === 0 && b.header !== false ? "th" : "td"; return `<${tag} contenteditable="true" data-cell="${ri},${ci}">${esc(c)}</${tag}>`; }).join("")}</tr>`).join("")}</table>`;
+      case "columns": return `<div class="colgrid" style="grid-template-columns:repeat(${(b.cols || []).length || 1},minmax(0,1fr))">${(b.cols || []).map((col, c) => `<div class="colcell">${col.map((nb, k) => nestedInner(nb, c, k)).join("") || `<span class="muted small">빈 칸</span>`}</div>`).join("")}</div>`;
       default: return `<em class="muted">알 수 없는 블록 ${esc(b.type)}</em>`;
     }
+  }
+  // blocks inside a columns cell: text stays editable (data-path), structure is fixed until "세로로" unpacks it
+  function nestedInner(nb, c, k) {
+    const path = `${c},${k}`;
+    switch (nb.type) {
+      case "heading": return `<div class="nh" contenteditable="true" data-path="${path},text">${esc(nb.text)}</div>`;
+      case "paragraph": return `<div contenteditable="true" data-path="${path},text">${esc(nb.text)}</div>`;
+      case "callout": return `<div class="callout" contenteditable="true" data-path="${path},text">${esc(nb.text)}</div>`;
+      case "bullets": return `<ul class="items">${(nb.items || []).map((it, i) => `<li contenteditable="true" data-path="${path},items,${i}">${esc(it)}</li>`).join("")}</ul>`;
+      case "image": return `<div class="figure"><img src="/files/${nb.src}" alt=""><input class="caption" data-path="${path},caption" placeholder="캡션" value="${esc(nb.caption)}"></div>`;
+      case "file": return `<div class="filebox"><span>📎</span><div class="name">${esc(nb.caption || (nb.src || "").split("/").pop())}</div></div>`;
+      case "table": return `<table class="tbl">${(nb.rows || []).map(r => `<tr>${r.map(x => `<td>${esc(x)}</td>`).join("")}</tr>`).join("")}</table>`;
+      case "divider": return `<hr>`;
+      default: return "";
+    }
+  }
+  function setPath(b, path, value) {
+    const p = path.split(","); const nb = b.cols?.[+p[0]]?.[+p[1]]; if (!nb) return;
+    if (p[2] === "items") nb.items[+p[3]] = value; else nb[p[2]] = value;
   }
   function blockHtml(b, i) {
     return `<div class="block" data-i="${i}" data-type="${b.type}" data-level="${b.level || ""}" draggable="false">
@@ -368,6 +393,7 @@
         ${b.type === "heading" ? `<button data-act="level" title="제목 크기">H${b.level === 3 ? 3 : 2}</button>` : ""}
         ${b.type === "paragraph" ? `<button data-act="toCallout" title="강조 상자로">▣</button>` : ""}
         ${b.type === "callout" ? `<button data-act="toPara" title="문단으로">¶</button>` : ""}
+        ${b.type === "columns" ? `<button data-act="flatten" title="가로 칸을 풀어 세로로 늘어놓기">세로로</button>` : ""}
         <button data-act="dup" title="복제">⧉</button><button data-act="del" title="삭제">✕</button>
       </div></div>`;
   }
@@ -393,12 +419,13 @@
       const i = +el.dataset.i, b = state.draft.blocks[i];
       $$("[contenteditable]", el).forEach(ce => {
         ce.oninput = () => {
+          if (ce.dataset.path) { setPath(b, ce.dataset.path, ce.innerText); scheduleSaveSoft(); return; }
           if (ce.dataset.cell !== undefined) { const [ri, ci] = ce.dataset.cell.split(",").map(Number); b.rows[ri][ci] = ce.innerText; }
           else if (ce.dataset.item !== undefined) b.items[+ce.dataset.item] = ce.innerText; else b[ce.dataset.field] = ce.innerText;
           scheduleSaveSoft();
         };
         ce.onkeydown = e => {
-          if (ce.dataset.cell !== undefined) return;            // tables: plain cell editing
+          if (ce.dataset.cell !== undefined || ce.dataset.path) return;   // tables and column cells: plain editing
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             if (ce.dataset.item !== undefined) { b.items.splice(+ce.dataset.item + 1, 0, ""); commit(); renderEditor(); focusBlock(i, +ce.dataset.item + 1); }
@@ -411,7 +438,7 @@
         };
         ce.onblur = () => { if (state.history.at(-1) !== JSON.stringify(state.draft.blocks)) commit(); };
       });
-      $$("input.caption", el).forEach(inp => inp.oninput = () => { b.caption = inp.value; scheduleSaveSoft(); });
+      $$("input.caption", el).forEach(inp => inp.oninput = () => { if (inp.dataset.path) setPath(b, inp.dataset.path, inp.value); else b.caption = inp.value; scheduleSaveSoft(); });
       $$(".menu button", el).forEach(btn => btn.onclick = () => blockAction(btn.dataset.act, i));
       const h = $(".handle", el);
       h.ondragstart = e => { e.dataTransfer.setData("text/x-move", `${i}:1`); e.dataTransfer.effectAllowed = "move"; el.classList.add("dragging"); e.stopPropagation(); };
@@ -462,6 +489,11 @@
     if (act === "level") b.level = b.level === 3 ? 2 : 3;
     if (act === "toCallout") b.type = "callout";
     if (act === "toPara") b.type = "paragraph";
+    if (act === "flatten" && b.type === "columns") {
+      const gid = "g-" + Math.random().toString(36).slice(2, 8);
+      const flat = (b.cols || []).flat().map(x => ({ ...x, id: uid(), group: gid, source_ref: b.source_ref }));
+      if (flat.length) { flat[0].group_label = "가로 칸을 풀어놓음"; bl.splice(i, 1, ...flat); }
+    }
     commit(); renderEditor(); renderLibrary();
   }
   function dropIndex(y) {
@@ -476,7 +508,7 @@
   function clearDropline() { $$("#editor .dropline").forEach(l => l.remove()); }
 
   // ---------- preview ----------
-  const inlineHtml = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+  const inlineHtml = s => esc(s).replace(/\n/g, "<br>").replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[^\w*])_(.+?)_(?![\w*])/g, "$1<em>$2</em>").replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2">$1</a>');
   function previewHtml(blocks) {
     return blocks.map(b => {
@@ -489,6 +521,7 @@
         case "divider": return `<hr>`;
         case "callout": return `<div class="info">${inlineHtml(b.text)}</div>`;
         case "table": return `<table>${(b.rows || []).map((r, ri) => `<tr>${r.map(c => { const tag = ri === 0 && b.header !== false ? "th" : "td"; return `<${tag}>${inlineHtml(c)}</${tag}>`; }).join("")}</tr>`).join("")}</table>`;
+        case "columns": return `<table class="cols"><tr>${(b.cols || []).map(col => `<td style="width:${Math.floor(100 / ((b.cols || []).length || 1))}%">${previewHtml(col)}</td>`).join("")}</tr></table>`;
         default: return "";
       }
     }).join("\n");

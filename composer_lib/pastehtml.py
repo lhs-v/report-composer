@@ -26,7 +26,7 @@ _INLINE_MD = (
 
 def inline_html(text: str) -> str:
     import re
-    s = escape(text or "")
+    s = escape(text or "").replace("\n", "<br>")
     for pat, rep in _INLINE_MD:
         s = re.sub(pat, rep, s)
     return s
@@ -39,11 +39,9 @@ def data_uri(path: Path) -> str | None:
     return f"data:{mime};base64," + base64.b64encode(path.read_bytes()).decode("ascii")
 
 
-def paste_html(title: str, blocks: list[dict], weeks_dir: Path) -> tuple[str, list[str]]:
-    """(html document, [file names that must be attached by hand])."""
-    weeks_dir = Path(weeks_dir)
+def render_blocks(blocks: list[dict], weeks_dir: Path, manual: list[str]) -> list[str]:
+    """HTML fragments for the blocks; file names that need manual attaching are appended to `manual`."""
     body: list[str] = []
-    manual: list[str] = []
     for b in blocks:
         t = b.get("type")
         if t == "heading":
@@ -80,6 +78,20 @@ def paste_html(title: str, blocks: list[dict], weeks_dir: Path) -> tuple[str, li
                 body.append('<table style="border-collapse:collapse">' + "".join(trs) + "</table>")
         elif t == "callout":
             body.append(f'<blockquote style="border-left:4px solid #0d6b61;padding:6px 10px;background:#eef6f4">{inline_html(b.get("text", ""))}</blockquote>')
+        elif t == "columns":
+            cols = [c for c in (b.get("cols") or []) if isinstance(c, list)]
+            if cols:
+                w = 100 // len(cols)
+                tds = "".join(f'<td style="vertical-align:top;width:{w}%;border:1px solid #ddd;padding:6px 10px">' + "\n".join(render_blocks(c, weeks_dir, manual)) + "</td>" for c in cols)
+                body.append(f'<table style="border-collapse:collapse;width:100%"><tr>{tds}</tr></table>')
+    return body
+
+
+def paste_html(title: str, blocks: list[dict], weeks_dir: Path) -> tuple[str, list[str]]:
+    """(html document, [file names that must be attached by hand])."""
+    weeks_dir = Path(weeks_dir)
+    manual: list[str] = []
+    body = render_blocks(blocks, weeks_dir, manual)
     doc = ("<!doctype html><html lang=\"ko\"><head><meta charset=\"utf-8\">"
            f"<title>{escape(title)}</title>"
            "<style>body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;max-width:800px;margin:24px auto;padding:0 16px;line-height:1.6}"

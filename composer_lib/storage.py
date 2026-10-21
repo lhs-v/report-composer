@@ -18,7 +18,7 @@ _LINK = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
 
 
 def inline_md(text: str) -> str:
-    s = escape(text or "")
+    s = escape(text or "").replace("\n", "<br/>")
     s = _CODE.sub(lambda m: f"<code>{m.group(1)}</code>", s)
     s = _BOLD.sub(lambda m: f"<strong>{m.group(1)}</strong>", s)
     s = _ITALIC.sub(lambda m: f"<em>{m.group(1)}</em>", s)
@@ -65,6 +65,12 @@ def render_block(b: dict) -> str:
         return "".join(out)
     if t == "callout":
         return f'<ac:structured-macro ac:name="info"><ac:rich-text-body><p>{inline_md(b.get("text", ""))}</p></ac:rich-text-body></ac:structured-macro>'
+    if t == "columns":
+        # side-by-side cells travel as a one-row table: it survives every Confluence version and the paste path
+        cols = [c for c in (b.get("cols") or []) if isinstance(c, list)]
+        if not cols:
+            return ""
+        return "<table><tbody><tr>" + "".join("<td>" + "".join(render_block(x) for x in c if isinstance(x, dict)) + "</td>" for c in cols) + "</tr></tbody></table>"
     return ""
 
 
@@ -87,4 +93,8 @@ def attachments_for(blocks: list[dict]) -> dict[str, str]:
     for b in blocks:
         if b.get("type") in ("image", "file") and b.get("src"):
             out.setdefault(attachment_name(b["src"]), b["src"])
+        if b.get("type") == "columns":
+            for col in b.get("cols") or []:
+                if isinstance(col, list):
+                    out.update({k: v for k, v in attachments_for(col).items() if k not in out})
     return out

@@ -8,7 +8,7 @@ import os
 import secrets
 from pathlib import Path
 
-BLOCK_TYPES = {"heading", "paragraph", "bullets", "image", "file", "divider", "callout", "table"}
+BLOCK_TYPES = {"heading", "paragraph", "bullets", "image", "file", "divider", "callout", "table", "columns"}
 
 
 def _now() -> str:
