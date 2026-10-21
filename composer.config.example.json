@@ -1,0 +1,14 @@
+{
+  "_comment": "composer.config.json 으로 복사해 채우세요. PAT는 Confluence 프로필 > Personal Access Tokens 에서 발급. default_parent_id 는 상위 페이지 URL의 pageId 숫자.",
+  "inbox_dir": "~/Downloads/report-inbox",
+  "workspace_dir": "~/report-composer",
+  "port": 8790,
+  "confluence": {
+    "base_url": "https://confluence.example.com",
+    "pat": "PASTE-PAT-HERE",
+    "default_space": "SPACEKEY",
+    "default_parent_id": "123456",
+    "verify_ssl": true,
+    "ca_bundle": ""
+  }
+}
