@@ -66,7 +66,8 @@ class ConfluenceClientTests(unittest.TestCase):
         result = self.client.publish(draft, self.weeks, space="AI", parent_id="77")
         seq = [(c["method"], c["url"].split("/rest/api/", 1)[1].split("?")[0]) for c in self.t.calls]
         self.assertEqual(seq[0], ("POST", "content"))
-        self.assertEqual(seq[1:3], [("POST", "content/900/child/attachment")] * 2)
+        self.assertEqual(seq[1], ("GET", "content/900/child/attachment"))            # existing attachments looked up first
+        self.assertEqual(seq[2:4], [("POST", "content/900/child/attachment")] * 2)
         self.assertEqual(seq[-1], ("PUT", "content/900"))
         create = json.loads(self.t.calls[0]["body"])
         self.assertEqual((create["space"]["key"], create["ancestors"][0]["id"], create["title"]), ("AI", "77", "주간 성과 W42"))
