@@ -203,6 +203,8 @@
   $("#pvClose").onclick = () => { $("#pageViewer").hidden = true; $("#pvFrame").src = "about:blank"; pvSrc = null; };
   $("#pvNewTab").onclick = () => { if (pvSrc) window.open(`/page/${pvSrc}`, "_blank"); };
   $("#pvWide").onclick = () => { const v = $("#pageViewer"); v.classList.toggle("wide"); $("#pvWide").textContent = v.classList.contains("wide") ? "좁게" : "넓게"; };
+  $("#pvSize").onclick = () => { const v = $("#pageViewer"); const order = ["short", "", "tall"]; const cur = v.classList.contains("short") ? 0 : v.classList.contains("tall") ? 2 : 1;
+    v.classList.remove("short", "tall"); const next = order[(cur + 1) % 3]; if (next) v.classList.add(next); v.style.height = ""; };
   const localSrc = u => (u && u.includes("/files/")) ? decodeURIComponent(u.split("/files/")[1]) : null;
   window.addEventListener("message", async e => {
     const m = e.data; if (!m || m.kind !== "cp-pick" || !pvSrc) return;

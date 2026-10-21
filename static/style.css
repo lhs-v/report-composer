@@ -59,7 +59,8 @@ input, select, textarea { font: inherit; font-size: 13px; color: var(--txt); bac
 .reader details.md pre { white-space:pre-wrap; font: inherit; color:var(--txt); background:transparent; margin:6px 0 0; }
 .reader .weekly { margin-top:14px; }
 .reader .weekly h3 { font-size:15px; margin:0 0 6px; }
-.pageViewer { position:sticky; top:0; z-index:5; background:var(--panel); border:1px solid var(--acc); border-radius:10px; margin-bottom:10px; display:flex; flex-direction:column; height:calc(100vh - 120px); min-height:320px; }
+.pageViewer { position:relative; background:var(--panel); border:1px solid var(--acc); border-radius:10px; margin-bottom:10px; display:flex; flex-direction:column; height:55vh; min-height:260px; resize:vertical; overflow:hidden; }
+.pageViewer.tall { height:80vh; } .pageViewer.short { height:35vh; }
 .pvHead { display:flex; align-items:center; gap:8px; padding:6px 10px; border-bottom:1px solid var(--line); font-size:13px; flex-wrap:nowrap; }
 .pvHead b { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:50%; }
 .pvHead .small { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0; }
