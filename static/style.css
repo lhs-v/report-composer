@@ -23,7 +23,7 @@ input, select, textarea { font: inherit; font-size: 13px; color: var(--txt); bac
 .pill { font-size:12px; border:1px solid var(--line); border-radius:999px; padding:2px 10px; color:var(--sub); }
 .pill.warn { color: var(--warn); border-color: var(--warn); }
 .field { display:flex; align-items:center; gap:6px; font-size:13px; }
-.cols { flex:1; display:grid; grid-template-columns: 220px 360px 1fr; min-height:0; }
+.cols { flex:1; display:grid; grid-template-columns: 200px minmax(380px, 34%) 1fr; min-height:0; }
 .col { min-width:0; overflow:auto; padding:12px; border-right:1px solid var(--line); }
 .col.right { border-right:0; padding:0; display:flex; flex-direction:column; }
 .col h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--sub); margin:0 0 8px; }
@@ -32,6 +32,34 @@ input, select, textarea { font: inherit; font-size: 13px; color: var(--txt); bac
 .list .week.active { background: var(--acc-soft); color: var(--acc); font-weight:600; }
 .list .week .n { margin-left:auto; font-size:12px; color:var(--sub); }
 .chips { margin-top:12px; display:flex; flex-wrap:wrap; gap:6px 10px; font-size:12px; }
+.midTabs { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
+.midTabs button { border-radius:999px; }
+.midTabs button.active { background: var(--acc-soft); color: var(--acc); border-color: var(--acc-soft); }
+.reader { font-size:14px; }
+.reader .wk { font-size:12px; color:var(--sub); text-transform:uppercase; letter-spacing:.06em; margin:4px 0 8px; }
+.reader h3.proj { font-size:15px; margin:14px 0 6px; padding-top:10px; border-top:1px solid var(--line); }
+.reader article { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin:8px 0; }
+.reader article h4 { font-size:15px; margin:0 0 8px; display:flex; align-items:baseline; gap:8px; }
+.reader article h4 .addAll { margin-left:auto; font-size:12px; padding:2px 8px; white-space:nowrap; }
+.reader .el { position:relative; padding-right:34px; margin:4px 0; border-radius:6px; }
+.reader .el:hover { background: color-mix(in srgb, var(--acc-soft) 60%, transparent); }
+.reader .el .plus { position:absolute; right:2px; top:2px; font-size:12px; padding:0 7px; opacity:0; }
+.reader .el:hover .plus, .reader .el.used .plus { opacity:1; }
+.reader .el.used { opacity:.65; } .reader .el.used .plus { color: var(--sub); border-color: var(--line); }
+.reader .el p, .reader .el li { margin:0; }
+.reader .el .lbl { font-weight:600; color:var(--acc); margin-right:4px; }
+.reader ul.res { margin:4px 0 0; padding-left:18px; }
+.reader figure { margin:6px 0 0; }
+.reader figure img { max-width:100%; max-height:300px; border:1px solid var(--line); border-radius:6px; display:block; }
+.reader figcaption { font-size:12px; color:var(--sub); margin-top:2px; }
+.reader .files { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.reader .files .chip { font-size:12px; border:1px solid var(--line); border-radius:999px; padding:1px 9px; background:transparent; color:var(--txt); }
+.reader .status { margin-top:8px; font-size:13px; }
+.reader details.md { margin-top:8px; font-size:12px; color:var(--sub); }
+.reader details.md pre { white-space:pre-wrap; font: inherit; color:var(--txt); background:transparent; margin:6px 0 0; }
+.reader .weekly { margin-top:14px; }
+.reader .weekly h3 { font-size:15px; margin:0 0 6px; }
+.selAdd { position:fixed; z-index:20; background: var(--acc); color:#fff; border-color: var(--acc); box-shadow:0 4px 14px rgba(0,0,0,.25); }
 .library .proj { margin-bottom:10px; }
 .library .proj > h3 { font-size:13px; margin:10px 0 4px; display:flex; align-items:center; gap:8px; }
 .library details { border:1px solid var(--line); border-radius:8px; margin:6px 0; background:var(--panel); }

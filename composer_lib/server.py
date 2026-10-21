@@ -31,6 +31,7 @@ from .confluence import ConfluenceClient, ConfluenceError
 from .drafts import Drafts
 from .inbox import process_once, scan
 from .library import build_library
+from .pastehtml import paste_html, readme_text
 from .storage import attachment_name, attachments_for, render, validate
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -75,7 +76,14 @@ class App:
                 shutil.copy2(fp, folder / name)
                 copied.append(name)
         (folder / "body.html").write_text(render(draft.get("blocks") or []), encoding="utf-8")
-        return {"folder": str(folder), "files": copied}
+        doc, manual = paste_html(draft.get("title") or "제목 없음", draft.get("blocks") or [], self.weeks_dir)
+        (folder / "paste.html").write_text(doc, encoding="utf-8")
+        (folder / "읽어주세요.txt").write_text(readme_text(draft.get("title") or "제목 없음", manual), encoding="utf-8")
+        return {"folder": str(folder), "files": copied, "paste_html": str(folder / "paste.html"), "manual_files": manual}
+
+    def paste(self, draft: dict) -> dict:
+        doc, manual = paste_html(draft.get("title") or "제목 없음", draft.get("blocks") or [], self.weeks_dir)
+        return {"html": doc, "manual_files": manual}
 
 
 def _safe_child(base: Path, rel: str) -> Path | None:
@@ -223,6 +231,10 @@ def make_handler(app: App):
             if m:
                 d = app.drafts.get(m.group(1))
                 return self._json(200, app.export(d)) if d else self._json(404, {"error": "no such draft"})
+            m = re.fullmatch(r"/api/paste/(d-[0-9a-f]+)", p)
+            if m:
+                d = app.drafts.get(m.group(1))
+                return self._json(200, app.paste(d)) if d else self._json(404, {"error": "no such draft"})
             if p == "/api/open":
                 target = Path(str(body.get("path") or "")).resolve()
                 try:

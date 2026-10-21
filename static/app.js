@@ -100,7 +100,92 @@
       el.ondragstart = e => { e.dataTransfer.setData("text/x-lib", el.dataset.id); e.dataTransfer.effectAllowed = "copy"; };
       el.onclick = () => addFromLibrary(el.dataset.id);
     });
+    const rd = $("#reader"); const keep = rd.scrollTop; renderReader(); rd.scrollTop = keep;
   }
+  // ---------- reader (the report, readable, with pick buttons) ----------
+  const mdInline = s => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  function mdToHtml(md) {
+    const out = []; let list = null;
+    const flush = () => { if (list) { out.push(`<ul>${list.join("")}</ul>`); list = null; } };
+    for (const raw of (md || "").split(/\r?\n/)) {
+      const line = raw.trimEnd();
+      if (!line.trim()) { flush(); continue; }
+      const h = line.match(/^(#{1,4})\s+(.*)$/);
+      if (h) { flush(); const l = Math.min(h[1].length + 2, 5); out.push(`<h${l}>${mdInline(h[2])}</h${l}>`); continue; }
+      const li = line.match(/^\s*[-*]\s+(.*)$/);
+      if (li) { (list ??= []).push(`<li>${mdInline(li[1])}</li>`); continue; }
+      if (/^!\[/.test(line)) continue;
+      flush(); out.push(`<p>${mdInline(line)}</p>`);
+    }
+    flush(); return out.join("");
+  }
+  function renderReader() {
+    const w = state.library.find(x => x.week === state.week);
+    const used = usedRefs();
+    const el = $("#reader");
+    if (!w) { el.innerHTML = `<p class="muted">주차를 고르세요.</p>`; return; }
+    const plus = b => `<button class="plus" data-add="${b.id}" title="초안에 추가">${used.has(b.id) ? "사용됨" : "＋"}</button>`;
+    const elm = (b, inner, cls = "") => `<div class="el ${used.has(b.id) ? "used" : ""} ${cls}" data-id="${b.id}">${inner}${plus(b)}</div>`;
+    const parts = [`<div class="wk">${esc(w.week)} · ${esc(w.since || "")} ~ ${esc(w.until || "")}</div>`];
+    for (const p of w.projects) {
+      parts.push(`<h3 class="proj">${esc(p.short)}</h3>`);
+      for (const s of p.streams) {
+        const by = { heading: null, paras: [], bullets: [], tail: [], images: [], files: [], pages: [], mds: [] };
+        for (const b of s.blocks) {
+          if (b.type === "heading") by.heading = b;
+          else if (b.type === "paragraph") (["지금 어디까지", "다음"].includes(b.label) ? by.tail : by.paras).push(b);
+          else if (b.type === "bullet") by.bullets.push(b);
+          else if (b.type === "image") by.images.push(b);
+          else if (b.type === "file") by.files.push(b);
+          else if (b.type === "page") by.pages.push(b);
+          else if (b.type === "markdown") by.mds.push(b);
+        }
+        const shown = new Set();
+        const figs = ns => by.images.filter(i => ns.includes(i.evidence_n) && !shown.has(i.id)).map(i => { shown.add(i.id);
+          return elm(i, `<figure><img src="/files/${i.src}" alt=""><figcaption>${esc(i.caption)}</figcaption></figure>`, "fig"); }).join("");
+        const html = [`<article data-stream="${esc(s.id)}"><h4>${by.heading ? `<span class="el inl" data-id="${by.heading.id}">${esc(s.title)}</span>` : esc(s.title)}
+            <button class="addAll" data-stream="${esc(s.id)}">흐름 전체 추가</button></h4>`];
+        if (by.heading) html.push(elm(by.heading, `<p class="muted small">제목 블록: ${esc(s.title)}</p>`));
+        for (const b of by.paras) html.push(elm(b, `<p><span class="lbl">${esc(b.label)}</span>${esc(b.text)}</p>`));
+        if (by.bullets.length) {
+          html.push(`<p class="muted small" style="margin:8px 0 0">대표 결과</p>`);
+          for (const b of by.bullets) { html.push(elm(b, `<ul class="res"><li>${esc(b.text)}</li></ul>`)); html.push(figs(b.evidence || [])); }
+        }
+        const rest = by.images.filter(i => !shown.has(i.id));
+        if (rest.length) html.push(rest.map(i => elm(i, `<figure><img src="/files/${i.src}" alt=""><figcaption>${esc(i.caption)}</figcaption></figure>`, "fig")).join(""));
+        for (const b of by.tail) html.push(elm(b, `<p class="status"><span class="lbl">${esc(b.label)}</span>${esc(b.text)}</p>`));
+        if (by.files.length || by.pages.length) html.push(`<div class="files">${by.pages.map(pg => `<button class="chip" data-open="${pg.src}">🌐 ${esc(pg.caption)} 열기</button>`).join("")}${by.files.map(f => `<button class="chip" data-add="${f.id}" title="첨부로 추가">📎 ${esc(f.src.split("/").pop())} · ${fmtSize(f.size)}${used.has(f.id) ? " ✓" : " ＋"}</button>`).join("")}</div>`);
+        for (const m of by.mds) html.push(`<details class="md"><summary>md 전문 (${esc(m.caption)}) <button class="chip" data-add="${m.id}">전체 ＋</button></summary><pre>${esc(m.text)}</pre></details>`);
+        html.push("</article>");
+        parts.push(html.join(""));
+      }
+    }
+    const weekly = (w.assets || []).find(a => a.src.endsWith("weekly.md"));
+    if (weekly) parts.push(`<div class="weekly"><article data-stream="${esc(weekly.id)}"><h4>주간 방향 보고 <button class="addAll" data-add="${weekly.id}">전체 추가</button></h4><div class="el" data-id="${weekly.id}">${mdToHtml(weekly.text)}</div></article></div>`);
+    const readme = (w.assets || []).find(a => a.src.endsWith("README.md"));
+    if (readme) parts.push(`<details class="md"><summary>패키지 README</summary><pre>${esc(readme.text)}</pre></details>`);
+    el.innerHTML = parts.join("");
+    $$("#reader [data-add]", el).forEach(b => b.onclick = e => { e.stopPropagation(); e.preventDefault(); addFromLibrary(b.dataset.add); });
+    $$("#reader [data-open]", el).forEach(b => b.onclick = e => { e.stopPropagation(); window.open(`/files/${b.dataset.open}`, "_blank"); });
+    $$("#reader [data-stream].addAll", el).forEach(b => b.onclick = e => { e.stopPropagation(); addStream(b.dataset.stream); });
+  }
+  // text selection inside the reader → "선택한 글 추가"
+  document.addEventListener("selectionchange", () => {
+    const sel = getSelection(); const btn = $("#selAdd");
+    if (!sel || sel.isCollapsed || !sel.toString().trim() || !$("#reader").contains(sel.anchorNode)) { btn.hidden = true; return; }
+    const r = sel.getRangeAt(0).getBoundingClientRect();
+    btn.style.left = Math.max(8, r.left) + "px"; btn.style.top = Math.max(8, r.top - 34) + "px"; btn.hidden = false;
+  });
+  $("#selAdd").onmousedown = e => e.preventDefault();
+  $("#selAdd").onclick = () => {
+    const sel = getSelection(); const text = sel.toString().trim(); if (!text) return;
+    const art = sel.anchorNode.parentElement?.closest("[data-stream]");
+    state.draft.blocks.push({ id: uid(), type: "paragraph", text: text.replace(/\s+/g, " "), source_ref: art ? art.dataset.stream + ":sel" : null });
+    commit(); renderEditor(); sel.removeAllRanges(); $("#selAdd").hidden = true; toast("선택한 글을 문단으로 추가했습니다.");
+  };
+  $$(".midTabs button[data-mid]").forEach(btn => btn.onclick = () => { $$(".midTabs button").forEach(b => b.classList.toggle("active", b === btn));
+    const r = btn.dataset.mid === "reader"; $("#reader").hidden = !r; $("#library").hidden = r; });
+
   function findLib(id) {
     for (const w of state.library) {
       for (const a of w.assets || []) if (a.id === id) return a;
@@ -332,17 +417,22 @@
     catch (e) { toast(`실패: ${esc(e.message)}`, 12000); }
   };
   $("#publishBtn").onclick = openPublish;
+  $("#copyHtml").onclick = async () => {
+    try {
+      const r = await api(`/api/paste/${state.draft.id}`);
+      const html = r.html.replace(/<div class="how"[\s\S]*?<\/div><hr>/, "");   // drop the instruction box from the copy
+      const text = state.draft.blocks.map(b => b.text || (b.items || []).join("\n") || b.caption || "").join("\n\n");
+      await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) })]);
+      const extra = r.manual_files.length ? ` 영상·파일 ${r.manual_files.length}개는 '첨부 폴더'에서 끌어 넣으세요.` : "";
+      toast("본문을 그림까지 포함해 복사했습니다. Confluence 편집기에 Ctrl+V." + extra, 7000);
+    } catch (e) {
+      toast("이 브라우저가 서식 복사를 막았습니다. '첨부 폴더'의 paste.html을 열어 Ctrl+A, Ctrl+C 하세요. (" + esc(e.message) + ")", 9000);
+    }
+  };
   $("#exportBtn").onclick = async () => {
     try { const r = await api(`/api/export/${state.draft.id}`, { method: "POST", body: {} });
       await api("/api/open", { method: "POST", body: { path: r.folder } });
-      toast(`첨부 ${r.files.length}개와 body.html을 모았습니다: ${esc(r.folder)}`); } catch (e) { toast("실패: " + esc(e.message)); }
-  };
-  $("#copyHtml").onclick = async () => {
-    const html = previewHtml(state.draft.blocks).replace(/src="\/files\//g, `src="${location.origin}/files/`);
-    const text = state.draft.blocks.map(b => b.text || (b.items || []).join("\n") || b.caption || "").join("\n\n");
-    try { await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) })]);
-      toast("본문을 서식 있는 텍스트로 복사했습니다. Confluence 편집기에 붙여넣고, 그림·영상은 '첨부 폴더'에서 끌어 넣으세요."); }
-    catch { await navigator.clipboard.writeText(text); toast("이 브라우저는 서식 복사를 막아 텍스트만 복사했습니다."); }
+      toast(`폴더를 열었습니다. paste.html을 브라우저로 열어 전체 복사 → Confluence에 붙여넣기. 수동 첨부 ${r.manual_files.length}개.`, 8000); } catch (e) { toast("실패: " + esc(e.message)); }
   };
 
   // ---------- top bar ----------

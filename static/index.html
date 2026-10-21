@@ -40,8 +40,14 @@
   </aside>
 
   <section class="col mid">
-    <h2>재료 <span class="muted small">클릭하면 초안 끝에 추가, 끌어 놓으면 그 자리에 삽입</span></h2>
-    <div id="library" class="library"></div>
+    <div class="midTabs">
+      <button data-mid="reader" class="active">보고서 읽기</button>
+      <button data-mid="library">조각 목록</button>
+      <span class="muted small">읽다가 ＋ 를 누르거나 글을 드래그해 선택하면 초안으로 가져옵니다</span>
+    </div>
+    <div id="reader" class="reader"></div>
+    <div id="library" class="library" hidden></div>
+    <button id="selAdd" class="selAdd" hidden>선택한 글 추가</button>
   </section>
 
   <section class="col right">

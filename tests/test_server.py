@@ -96,11 +96,18 @@ class ServerTests(unittest.TestCase):
         status, d = self.req("/api/drafts", "POST", {"title": "내보내기"})
         d["blocks"] = [{"id": "b1", "type": "file", "src": "2026-W42/pages/alpha-01/media/v.mp4", "caption": "영상", "source_ref": None}]
         self.req(f"/api/drafts/{d['id']}", "PUT", d)
+        d["blocks"].insert(0, {"id": "b0", "type": "image", "src": "2026-W42/pages/alpha-01/preview.png", "caption": "캡처", "source_ref": None})
+        self.req(f"/api/drafts/{d['id']}", "PUT", d)
         status, exp = self.req(f"/api/export/{d['id']}", "POST", {})
         self.assertEqual(status, 200)
         folder = Path(exp["folder"])
         self.assertTrue((folder / "body.html").exists())
         self.assertTrue((folder / "2026-W42_pages_alpha-01_media_v.mp4").exists())
+        paste = (folder / "paste.html").read_text(encoding="utf-8")
+        self.assertIn("data:image/png;base64,", paste)              # images travel inside the file
+        self.assertIn("v.mp4", paste)                                 # non-embeddable files are listed by name
+        self.assertIn("Ctrl+A", (folder / "읽어주세요.txt").read_text(encoding="utf-8"))
+        self.assertEqual(exp["paste_html"], str(folder / "paste.html"))
 
     def test_whoami_route(self):
         status, who = self.req("/api/confluence/whoami")
