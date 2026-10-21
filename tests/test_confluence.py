@@ -115,6 +115,16 @@ class ConfluenceClientTests(unittest.TestCase):
         except ConfluenceError as e:
             self.assertNotIn("secret", str(e))
 
+    def test_cloud_uses_basic_auth_with_email_when_email_is_configured(self):
+        import base64
+        cfg = ConfluenceConfig(base_url="https://corp.atlassian.net/wiki", pat="apitoken", email="me@corp.com", default_space="SODA")
+        t = FakeTransport()
+        ConfluenceClient(cfg, transport=t).spaces()
+        expected = "Basic " + base64.b64encode(b"me@corp.com:apitoken").decode()
+        self.assertEqual(t.calls[0]["headers"]["Authorization"], expected)
+        self.assertTrue(t.calls[0]["url"].startswith("https://corp.atlassian.net/wiki/rest/api/space"))
+        self.assertNotIn("apitoken", repr(ConfluenceClient(cfg, transport=t)))
+
 
 if __name__ == "__main__":
     unittest.main()

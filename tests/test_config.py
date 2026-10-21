@@ -18,6 +18,7 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(cfg.confluence.pat, "secret")
             self.assertTrue(cfg.confluence.verify_ssl)
             self.assertEqual(cfg.public()["confluence"]["pat"], "***")
+            self.assertEqual(cfg.confluence.email, "")
             self.assertNotIn("secret", json.dumps(cfg.public()))
 
     def test_missing_file_gives_defaults_without_confluence(self):

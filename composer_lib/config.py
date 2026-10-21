@@ -16,10 +16,15 @@ class ConfluenceConfig:
     default_parent_id: str = ""
     verify_ssl: bool = True
     ca_bundle: str = ""
+    email: str = ""          # Confluence Cloud: API token + account email (Basic auth). Empty = Data Center PAT (Bearer).
 
     @property
     def configured(self) -> bool:
         return bool(self.base_url and self.pat)
+
+    @property
+    def is_cloud(self) -> bool:
+        return bool(self.email)
 
 
 @dataclass
@@ -57,5 +62,6 @@ def load_config(path: Path | None) -> Config:
             default_parent_id=str(c.get("default_parent_id") or ""),
             verify_ssl=bool(c.get("verify_ssl", True)),
             ca_bundle=str(c.get("ca_bundle") or ""),
+            email=str(c.get("email") or ""),
         )
     return cfg

@@ -7,9 +7,8 @@
 1. 이 `composer` 폴더를 사내 PC 아무 곳에나 복사합니다 (예: `C:\Tools\composer`).
 2. `composer.config.example.json`을 복사해 `composer.config.json`을 만들고 채웁니다.
    - `inbox_dir`: 메일 첨부 zip을 저장할 폴더 (기본 `~/Downloads/report-inbox`). 없으면 만들어집니다.
-   - `confluence.base_url`: 사내 Confluence 주소 (예: `https://confluence.example.com`)
-   - `confluence.pat`: Confluence 프로필 → **Personal Access Tokens**에서 만든 토큰
-   - `confluence.default_space`: 스페이스 키, `confluence.default_parent_id`: 상위 페이지 URL의 `pageId` 숫자
+   - 페이지 주소가 `…/pages/viewpage.action?pageId=숫자` 형식이면 **Data Center**: `base_url`은 호스트까지(예: `https://confluence.example.com`), `pat`는 프로필 → **Personal Access Tokens**에서 만든 토큰, `email`은 비웁니다. `default_parent_id`는 `pageId=` 뒤 숫자.
+   - 페이지 주소가 `…/wiki/spaces/SODA/pages/숫자/제목` 형식이면 **Cloud**: `base_url`은 `/spaces/` 앞까지(`/wiki` 포함, 예: `https://example.atlassian.net/wiki`), `pat`에 id.atlassian.com → 보안 → **API 토큰**, `email`에 Atlassian 계정 이메일. `default_space`는 `SODA`, `default_parent_id`는 `pages/` 뒤 숫자.
    - 사내 인증서로 SSL 오류가 나면 `confluence.ca_bundle`에 사내 CA 인증서 파일(PEM) 경로를 넣습니다.
 3. 실행: `python composer.py` → 브라우저가 `http://127.0.0.1:8790`을 엽니다. (창을 닫아도 서버는 터미널이 살아 있는 동안 유지됩니다.)
 

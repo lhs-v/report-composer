@@ -6,6 +6,7 @@ only ever placed in the Authorization header; it is excluded from repr() and err
 """
 from __future__ import annotations
 
+import base64
 import json
 import mimetypes
 import secrets
@@ -55,7 +56,11 @@ class ConfluenceClient:
 
     # ----- low level -----
     def _headers(self, extra: dict | None = None) -> dict:
-        h = {"Authorization": f"Bearer {self.cfg.pat}", "Accept": "application/json", "X-Atlassian-Token": "nocheck"}
+        if self.cfg.email:   # Confluence Cloud: API token is sent as Basic email:token
+            auth = "Basic " + base64.b64encode(f"{self.cfg.email}:{self.cfg.pat}".encode("utf-8")).decode("ascii")
+        else:                # Data Center: personal access token as Bearer
+            auth = f"Bearer {self.cfg.pat}"
+        h = {"Authorization": auth, "Accept": "application/json", "X-Atlassian-Token": "nocheck"}
         h.update(extra or {})
         return h
 
