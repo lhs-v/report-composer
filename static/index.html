@@ -43,11 +43,27 @@
     <div class="midTabs">
       <button data-mid="reader" class="active">보고서 읽기</button>
       <button data-mid="library">조각 목록</button>
-      <span class="muted small">읽다가 ＋ 를 누르거나 글을 드래그해 선택하면 초안으로 가져옵니다</span>
+      <span class="sp"></span>
+      <button id="foldAll" class="ghost" title="프로젝트와 흐름을 모두 접기">모두 접기</button>
+      <button id="unfoldAll" class="ghost" title="모두 펼치기">모두 펼치기</button>
     </div>
+    <p class="muted small midHint">읽다가 ＋ 를 누르거나 글을 드래그해 선택하면 초안으로 갑니다. 프로젝트·흐름 제목을 누르면 접힙니다.</p>
     <div id="reader" class="reader"></div>
     <div id="library" class="library" hidden></div>
     <button id="selAdd" class="selAdd" hidden>선택한 글 추가</button>
+
+    <div id="pageView" class="pageView" hidden>
+      <div class="pvHead">
+        <button id="pvBack" title="보고서로 돌아가기 (Esc)">← 보고서로</button>
+        <b id="pvTitle">결과 페이지</b>
+        <span class="sp"></span>
+        <span id="pvCount" class="muted small"></span>
+        <button id="pvUndo" hidden title="방금 담은 것을 초안에서 뺍니다">방금 담은 것 취소</button>
+        <button id="pvNewWin" title="이 페이지를 별도 창으로 엽니다. 거기서 클릭해도 이 초안에 담깁니다.">새 창</button>
+      </div>
+      <p class="muted small pvHint">마우스를 올리면 읽는 단위(그림+설명 · 강조 상자 · 목록 · 표 · 섹션 · 문단)가 표시되고, 클릭하면 오른쪽 초안에 그 단위로 담깁니다. Alt+클릭은 더 넓은 구역을 통째로.</p>
+      <iframe id="pvFrame" title="결과 페이지"></iframe>
+    </div>
   </section>
 
   <section class="col right">
@@ -90,23 +106,6 @@
       <button id="pubGo" value="go" class="primary">올리기</button>
     </div>
   </form>
-</dialog>
-
-<dialog id="pageDlg" class="pageDlg">
-  <div class="pdHead">
-    <b id="pvTitle">결과 페이지</b>
-    <span class="muted small">그림·표·문단·제목·목록·영상·음성·SVG 차트에 마우스를 올려 클릭하면 초안에 추가 · Alt+클릭은 그 구역을 통째로 · Esc로 닫기</span>
-    <span class="sp" style="flex:1"></span>
-    <button id="pvNewTab" title="새 탭으로 열기">새 탭</button><button id="pvClose">닫기</button>
-  </div>
-  <div class="pdBody">
-    <iframe id="pvFrame" title="결과 페이지"></iframe>
-    <aside class="pdRail">
-      <h4>이 페이지에서 담은 것 <span id="pdCount" class="muted small"></span></h4>
-      <ol id="pdList"></ol>
-      <p class="muted small">담긴 순서대로 초안 끝에 붙습니다. ✕는 되돌리기.</p>
-    </aside>
-  </div>
 </dialog>
 <div id="toast" class="toast" hidden></div>
 <script src="/static/app.js"></script>
