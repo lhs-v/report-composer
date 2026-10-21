@@ -70,6 +70,14 @@ def paste_html(title: str, blocks: list[dict], weeks_dir: Path) -> tuple[str, li
             body.append(f'<p>[첨부 파일: {escape(name)}] {escape(b.get("caption") or "")}</p>')
         elif t == "divider":
             body.append("<hr>")
+        elif t == "table":
+            rows = [r for r in (b.get("rows") or []) if isinstance(r, list)]
+            if rows:
+                trs = []
+                for i, row in enumerate(rows):
+                    cell = "th" if (i == 0 and b.get("header", True)) else "td"
+                    trs.append("<tr>" + "".join(f'<{cell} style="border:1px solid #bbb;padding:4px 8px">{inline_html(str(c))}</{cell}>' for c in row) + "</tr>")
+                body.append('<table style="border-collapse:collapse">' + "".join(trs) + "</table>")
         elif t == "callout":
             body.append(f'<blockquote style="border-left:4px solid #0d6b61;padding:6px 10px;background:#eef6f4">{inline_html(b.get("text", ""))}</blockquote>')
     doc = ("<!doctype html><html lang=\"ko\"><head><meta charset=\"utf-8\">"

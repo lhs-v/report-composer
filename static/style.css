@@ -59,6 +59,19 @@ input, select, textarea { font: inherit; font-size: 13px; color: var(--txt); bac
 .reader details.md pre { white-space:pre-wrap; font: inherit; color:var(--txt); background:transparent; margin:6px 0 0; }
 .reader .weekly { margin-top:14px; }
 .reader .weekly h3 { font-size:15px; margin:0 0 6px; }
+.pageViewer { position:sticky; top:0; z-index:5; background:var(--panel); border:1px solid var(--acc); border-radius:10px; margin-bottom:10px; display:flex; flex-direction:column; height:calc(100vh - 120px); min-height:320px; }
+.pvHead { display:flex; align-items:center; gap:8px; padding:6px 10px; border-bottom:1px solid var(--line); font-size:13px; flex-wrap:nowrap; }
+.pvHead b { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:50%; }
+.pvHead .small { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0; }
+.pvHead button { white-space:nowrap; }
+.pageViewer.wide { position:fixed; left:8px; top:56px; width:calc(62vw - 16px); height:calc(100vh - 64px); z-index:30; box-shadow:0 10px 40px rgba(0,0,0,.35); }
+.pageViewer iframe { flex:1; width:100%; border:0; background:#fff; border-radius:0 0 10px 10px; }
+.reader .media { margin-top:6px; }
+.reader .media video, .reader .media audio { width:100%; max-height:260px; border-radius:6px; background:#000; }
+.reader .media .cap { font-size:12px; color:var(--sub); display:flex; gap:8px; align-items:center; margin-top:2px; }
+.block table.tbl { border-collapse:collapse; font-size:13px; } .block table.tbl td, .block table.tbl th { border:1px solid var(--line); padding:3px 8px; min-width:40px; }
+.block table.tbl th { background: var(--acc-soft); }
+.preview table { border-collapse:collapse; } .preview td, .preview th { border:1px solid var(--line); padding:3px 8px; }
 .selAdd { position:fixed; z-index:20; background: var(--acc); color:#fff; border-color: var(--acc); box-shadow:0 4px 14px rgba(0,0,0,.25); }
 .library .proj { margin-bottom:10px; }
 .library .proj > h3 { font-size:13px; margin:10px 0 4px; display:flex; align-items:center; gap:8px; }

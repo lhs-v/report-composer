@@ -10,6 +10,7 @@ BLOCKS = [
     {"id": "5", "type": "file", "src": "2026-W42/pages/alpha-01/media/v.mp4", "caption": "비교 영상"},
     {"id": "6", "type": "divider"},
     {"id": "7", "type": "callout", "text": "지금 어디까지: 비교 완료"},
+    {"id": "8", "type": "table", "rows": [["항목", "값 & 단위"], ["WER", "0.23"]], "header": True},
 ]
 
 
@@ -34,6 +35,7 @@ class StorageTests(unittest.TestCase):
         self.assertIn("<p><em>캡처 1</em></p>", x)
         self.assertIn('<ac:link><ri:attachment ri:filename="2026-W42_pages_alpha-01_media_v.mp4"/><ac:plain-text-link-body><![CDATA[비교 영상]]></ac:plain-text-link-body></ac:link>', x)
         self.assertIn("<hr/>", x)
+        self.assertIn("<table><tbody><tr><th>항목</th><th>값 &amp; 단위</th></tr><tr><td>WER</td><td>0.23</td></tr></tbody></table>", x)
         self.assertIn('<ac:structured-macro ac:name="info"><ac:rich-text-body><p>지금 어디까지: 비교 완료</p></ac:rich-text-body></ac:structured-macro>', x)
 
     def test_rendered_markup_is_well_formed(self):

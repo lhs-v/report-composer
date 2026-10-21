@@ -53,6 +53,16 @@ def render_block(b: dict) -> str:
                 f"<ac:plain-text-link-body><![CDATA[{label}]]></ac:plain-text-link-body></ac:link></p>")
     if t == "divider":
         return "<hr/>"
+    if t == "table":
+        rows = [r for r in (b.get("rows") or []) if isinstance(r, list)]
+        if not rows:
+            return ""
+        out = ["<table><tbody>"]
+        for i, row in enumerate(rows):
+            cell = "th" if (i == 0 and b.get("header", True)) else "td"
+            out.append("<tr>" + "".join(f"<{cell}>{inline_md(str(c))}</{cell}>" for c in row) + "</tr>")
+        out.append("</tbody></table>")
+        return "".join(out)
     if t == "callout":
         return f'<ac:structured-macro ac:name="info"><ac:rich-text-body><p>{inline_md(b.get("text", ""))}</p></ac:rich-text-body></ac:structured-macro>'
     return ""

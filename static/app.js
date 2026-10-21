@@ -66,7 +66,7 @@
       : b.type === "page" ? `<div class="txt">${esc(b.caption)}</div><div class="meta">결과 페이지 (로컬)</div>`
       : b.type === "markdown" ? `<div class="lbl">${esc(b.caption)}</div><div class="txt">${esc((b.text || "").slice(0, 200))}</div>`
       : `${b.label ? `<div class="lbl">${esc(b.label)}</div>` : ""}<div class="txt">${esc(b.text)}</div>`;
-    const action = b.type === "page" ? `<button class="open" data-open="${b.src}">열기</button>` : used ? `<span class="badge">사용됨</span>` : `<button class="open" data-add="${b.id}">＋</button>`;
+    const action = b.type === "page" ? `<button class="open" data-view="${b.src}" data-title="${esc(b.caption)}">열기</button>` : used ? `<span class="badge">사용됨</span>` : `<button class="open" data-add="${b.id}">＋</button>`;
     return `<div class="lib-block ${used ? "used" : ""}" draggable="${b.type !== "page"}" data-id="${b.id}"><span class="icon">${icon(b)}</span><div class="body">${body}</div>${action}</div>`;
   }
   const openStreams = new Set();   // which <details> the user has expanded; survives re-renders
@@ -94,7 +94,7 @@
     $$("#library details").forEach(d => d.ontoggle = () => { d.open ? openStreams.add(d.dataset.streamId) : openStreams.delete(d.dataset.streamId); });
     libEl.scrollTop = scrollTop; libEl.parentElement.scrollTop = midScroll;
     $$("#library [data-add]").forEach(el => el.onclick = e => { e.stopPropagation(); addFromLibrary(el.dataset.add); });
-    $$("#library [data-open]").forEach(el => el.onclick = e => { e.stopPropagation(); window.open(`/files/${el.dataset.open}`, "_blank"); });
+    $$("#library [data-view]").forEach(el => el.onclick = e => { e.stopPropagation(); openPageViewer(el.dataset.view, el.dataset.title); });
     $$("#library [data-stream]").forEach(el => el.onclick = e => { e.preventDefault(); e.stopPropagation(); addStream(el.dataset.stream); });
     $$("#library .lib-block[draggable=true]").forEach(el => {
       el.ondragstart = e => { e.dataTransfer.setData("text/x-lib", el.dataset.id); e.dataTransfer.effectAllowed = "copy"; };
@@ -154,7 +154,12 @@
         const rest = by.images.filter(i => !shown.has(i.id));
         if (rest.length) html.push(rest.map(i => elm(i, `<figure><img src="/files/${i.src}" alt=""><figcaption>${esc(i.caption)}</figcaption></figure>`, "fig")).join(""));
         for (const b of by.tail) html.push(elm(b, `<p class="status"><span class="lbl">${esc(b.label)}</span>${esc(b.text)}</p>`));
-        if (by.files.length || by.pages.length) html.push(`<div class="files">${by.pages.map(pg => `<button class="chip" data-open="${pg.src}">🌐 ${esc(pg.caption)} 열기</button>`).join("")}${by.files.map(f => `<button class="chip" data-add="${f.id}" title="첨부로 추가">📎 ${esc(f.src.split("/").pop())} · ${fmtSize(f.size)}${used.has(f.id) ? " ✓" : " ＋"}</button>`).join("")}</div>`);
+        if (by.files.length || by.pages.length) html.push(`<div class="files">${by.pages.map(pg => `<button class="chip" data-view="${pg.src}" data-title="${esc(pg.caption)}">🌐 ${esc(pg.caption)} 열어서 집어오기</button>`).join("")}${by.files.map(f => `<button class="chip" data-add="${f.id}" title="첨부로 추가">📎 ${esc(f.src.split("/").pop())} · ${fmtSize(f.size)}${used.has(f.id) ? " ✓" : " ＋"}</button>`).join("")}</div>`);
+        for (const f of by.files) {
+          const ext = f.src.split(".").pop().toLowerCase();
+          if (["mp4", "webm", "mov"].includes(ext)) html.push(`<div class="media"><video controls preload="metadata" src="/files/${f.src}"></video><div class="cap">${esc(f.caption)} <button class="chip" data-add="${f.id}">${used.has(f.id) ? "첨부됨 ✓" : "첨부로 추가 ＋"}</button></div></div>`);
+          else if (["mp3", "wav", "ogg", "m4a"].includes(ext)) html.push(`<div class="media"><audio controls preload="metadata" src="/files/${f.src}"></audio><div class="cap">${esc(f.caption)} <button class="chip" data-add="${f.id}">${used.has(f.id) ? "첨부됨 ✓" : "첨부로 추가 ＋"}</button></div></div>`);
+        }
         for (const m of by.mds) html.push(`<details class="md"><summary>md 전문 (${esc(m.caption)}) <button class="chip" data-add="${m.id}">전체 ＋</button></summary><pre>${esc(m.text)}</pre></details>`);
         html.push("</article>");
         parts.push(html.join(""));
@@ -166,7 +171,7 @@
     if (readme) parts.push(`<details class="md"><summary>패키지 README</summary><pre>${esc(readme.text)}</pre></details>`);
     el.innerHTML = parts.join("");
     $$("#reader [data-add]", el).forEach(b => b.onclick = e => { e.stopPropagation(); e.preventDefault(); addFromLibrary(b.dataset.add); });
-    $$("#reader [data-open]", el).forEach(b => b.onclick = e => { e.stopPropagation(); window.open(`/files/${b.dataset.open}`, "_blank"); });
+    $$("#reader [data-view]", el).forEach(b => b.onclick = e => { e.stopPropagation(); openPageViewer(b.dataset.view, b.dataset.title); });
     $$("#reader [data-stream].addAll", el).forEach(b => b.onclick = e => { e.stopPropagation(); addStream(b.dataset.stream); });
   }
   // text selection inside the reader → "선택한 글 추가"
@@ -185,6 +190,52 @@
   };
   $$(".midTabs button[data-mid]").forEach(btn => btn.onclick = () => { $$(".midTabs button").forEach(b => b.classList.toggle("active", b === btn));
     const r = btn.dataset.mid === "reader"; $("#reader").hidden = !r; $("#library").hidden = r; });
+
+  // ---------- inline page viewer: lift elements out of a result page ----------
+  let pvSrc = null;
+  function openPageViewer(src, title) {
+    pvSrc = src;
+    $("#pvTitle").textContent = title || src.split("/").slice(-2, -1)[0];
+    $("#pvFrame").src = `/page/${src}`;
+    $("#pageViewer").hidden = false;
+    $("#pageViewer").scrollIntoView({ block: "start" });
+  }
+  $("#pvClose").onclick = () => { $("#pageViewer").hidden = true; $("#pvFrame").src = "about:blank"; pvSrc = null; };
+  $("#pvNewTab").onclick = () => { if (pvSrc) window.open(`/page/${pvSrc}`, "_blank"); };
+  $("#pvWide").onclick = () => { const v = $("#pageViewer"); v.classList.toggle("wide"); $("#pvWide").textContent = v.classList.contains("wide") ? "좁게" : "넓게"; };
+  const localSrc = u => (u && u.includes("/files/")) ? decodeURIComponent(u.split("/files/")[1]) : null;
+  window.addEventListener("message", async e => {
+    const m = e.data; if (!m || m.kind !== "cp-pick" || !pvSrc) return;
+    const week = pvSrc.split("/")[0];
+    const ref = `page:${pvSrc}`;
+    try {
+      if (m.tag === "img") {
+        let src = localSrc(m.src);
+        if (!src && m.data) src = (await api("/api/pick-image", { method: "POST", body: { week, data: m.data, name: m.caption || m.alt || "pick" } })).src;
+        if (!src) return toast("이 그림은 가져올 수 없습니다 (외부 주소).");
+        state.draft.blocks.push({ id: uid(), type: "image", src, caption: m.caption || m.alt || "", source_ref: ref });
+      } else if (m.tag === "video" || m.tag === "audio") {
+        const src = localSrc(m.src);
+        if (!src) return toast("이 미디어는 패키지 안에 없어 첨부할 수 없습니다.");
+        state.draft.blocks.push({ id: uid(), type: "file", src, caption: m.caption || src.split("/").pop(), source_ref: ref });
+      } else if (m.tag === "table") {
+        if (!m.rows || !m.rows.length) return;
+        state.draft.blocks.push({ id: uid(), type: "table", rows: m.rows, header: !!m.header, source_ref: ref });
+      } else if (m.tag === "li") {
+        const prev = state.draft.blocks[state.draft.blocks.length - 1];
+        if (prev && prev.type === "bullets" && prev.source_ref === ref) prev.items.push(m.text);
+        else state.draft.blocks.push({ id: uid(), type: "bullets", items: [m.text], source_ref: ref });
+      } else if (m.level) {
+        state.draft.blocks.push({ id: uid(), type: "heading", level: m.level <= 2 ? 2 : 3, text: m.text, source_ref: ref });
+      } else if (m.tag === "pre") {
+        state.draft.blocks.push({ id: uid(), type: "paragraph", text: "`" + m.text.replace(/`/g, "'") + "`", source_ref: ref });
+      } else {
+        if (!m.text) return;
+        state.draft.blocks.push({ id: uid(), type: "paragraph", text: m.text.replace(/\s+/g, " "), source_ref: ref });
+      }
+      commit(); renderEditor(); toast("페이지에서 가져왔습니다.", 1500);
+    } catch (err) { toast("가져오기 실패: " + esc(err.message)); }
+  });
 
   function findLib(id) {
     for (const w of state.library) {
@@ -275,6 +326,7 @@
       case "file": return `<div class="filebox"><span>📎</span><div style="flex:1"><input class="caption" data-field="caption" placeholder="설명" value="${esc(b.caption)}"><div class="name">${esc(b.src.split("/").pop())}</div></div></div>`;
       case "divider": return `<hr>`;
       case "callout": return `<div class="callout" contenteditable="true" data-field="text" data-ph="강조할 내용">${esc(b.text)}</div>`;
+      case "table": return `<table class="tbl">${(b.rows || []).map((r, ri) => `<tr>${r.map((c, ci) => { const tag = ri === 0 && b.header !== false ? "th" : "td"; return `<${tag} contenteditable="true" data-cell="${ri},${ci}">${esc(c)}</${tag}>`; }).join("")}</tr>`).join("")}</table>`;
       default: return `<em class="muted">알 수 없는 블록 ${esc(b.type)}</em>`;
     }
   }
@@ -300,8 +352,13 @@
     $$(".block", ed).forEach(el => {
       const i = +el.dataset.i, b = state.draft.blocks[i];
       $$("[contenteditable]", el).forEach(ce => {
-        ce.oninput = () => { if (ce.dataset.item !== undefined) b.items[+ce.dataset.item] = ce.innerText; else b[ce.dataset.field] = ce.innerText; scheduleSaveSoft(); };
+        ce.oninput = () => {
+          if (ce.dataset.cell !== undefined) { const [ri, ci] = ce.dataset.cell.split(",").map(Number); b.rows[ri][ci] = ce.innerText; }
+          else if (ce.dataset.item !== undefined) b.items[+ce.dataset.item] = ce.innerText; else b[ce.dataset.field] = ce.innerText;
+          scheduleSaveSoft();
+        };
         ce.onkeydown = e => {
+          if (ce.dataset.cell !== undefined) return;            // tables: plain cell editing
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             if (ce.dataset.item !== undefined) { b.items.splice(+ce.dataset.item + 1, 0, ""); commit(); renderEditor(); focusBlock(i, +ce.dataset.item + 1); }
@@ -371,6 +428,7 @@
         case "file": return `<p><span class="att">📎 ${esc(b.caption || b.src)}</span></p>`;
         case "divider": return `<hr>`;
         case "callout": return `<div class="info">${inlineHtml(b.text)}</div>`;
+        case "table": return `<table>${(b.rows || []).map((r, ri) => `<tr>${r.map(c => { const tag = ri === 0 && b.header !== false ? "th" : "td"; return `<${tag}>${inlineHtml(c)}</${tag}>`; }).join("")}</tr>`).join("")}</table>`;
         default: return "";
       }
     }).join("\n");

@@ -38,7 +38,9 @@ class DraftTests(unittest.TestCase):
 
     def test_invalid_block_type_is_rejected_and_delete_removes_file(self):
         d = self.drafts.create("x")
-        d["blocks"] = [{"id": "b1", "type": "table", "text": "?"}]
+        d["blocks"] = [{"id": "b1", "type": "table", "rows": [["a"]]}]
+        self.drafts.save(d)                                   # table is a real block type now
+        d["blocks"] = [{"id": "b1", "type": "spreadsheet", "text": "?"}]
         with self.assertRaises(ValueError):
             self.drafts.save(d)
         self.drafts.delete(d["id"])

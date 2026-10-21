@@ -23,6 +23,7 @@ class ServerTests(unittest.TestCase):
         (w / "pages" / "alpha-01" / "media").mkdir(parents=True)
         (w / "outcomes.json").write_text(json.dumps(OUTCOMES, ensure_ascii=False), encoding="utf-8")
         (w / "pages" / "alpha-01" / "preview.png").write_bytes(b"PNG")
+        (w / "pages" / "alpha-01" / "index.html").write_text("<title>비교 페이지</title><style>b{}</style><h2>결과</h2><video src=\"media/v.mp4\"></video>", encoding="utf-8")
         (w / "pages" / "alpha-01" / "media" / "v.mp4").write_bytes(b"MP4")
         cls.cfg.inbox_dir.mkdir()
         cls.transport = FakeTransport()
@@ -73,7 +74,7 @@ class ServerTests(unittest.TestCase):
         status, saved = self.req(f"/api/drafts/{d['id']}", "PUT", d)
         self.assertEqual(status, 200)
         self.assertEqual(len(saved["blocks"]), 2)
-        status, bad = self.req(f"/api/drafts/{d['id']}", "PUT", {**d, "blocks": [{"id": "x", "type": "table"}]})
+        status, bad = self.req(f"/api/drafts/{d['id']}", "PUT", {**d, "blocks": [{"id": "x", "type": "spreadsheet"}]})
         self.assertEqual(status, 400)
         status, prev = self.req("/api/preview", "POST", {"blocks": d["blocks"]})
         self.assertEqual(status, 200)
@@ -113,6 +114,29 @@ class ServerTests(unittest.TestCase):
         status, who = self.req("/api/confluence/whoami")
         self.assertEqual(status, 200)
         self.assertEqual(who["username"], "hs.lee")
+
+    def test_page_route_wraps_fragment_and_injects_the_picker(self):
+        status, body = self.req("/page/2026-W42/pages/alpha-01/index.html")
+        self.assertEqual(status, 200)
+        text = body.decode("utf-8")
+        self.assertTrue(text.lstrip().lower().startswith("<!doctype html>"))
+        self.assertIn('<meta name="viewport"', text)
+        self.assertIn("<title>비교 페이지</title>", text.split("<body")[0])
+        self.assertIn('<base href="/files/2026-W42/pages/alpha-01/">', text)     # relative media keeps working
+        self.assertIn('src="/static/picker.js"', text)
+        self.assertIn("<h2>결과</h2>", text)
+        self.assertEqual(self.req("/page/2026-W42/../x.html")[0], 404)
+
+    def test_pick_image_saves_data_uri_under_the_week_and_returns_a_src(self):
+        import base64
+        uri = "data:image/png;base64," + base64.b64encode(b"PNG picked").decode()
+        status, res = self.req("/api/pick-image", "POST", {"week": "2026-W42", "data": uri, "name": "그림 1"})
+        self.assertEqual(status, 200)
+        self.assertTrue(res["src"].startswith("2026-W42/picked/"))
+        self.assertTrue(res["src"].endswith(".png"))
+        self.assertEqual(self.req(f"/files/{res['src']}")[0], 200)
+        status, _ = self.req("/api/pick-image", "POST", {"week": "../etc", "data": uri})
+        self.assertEqual(status, 400)
 
     def test_post_without_json_content_type_is_rejected(self):
         status, _ = self.req("/api/drafts", "POST", b'{"title":"x"}', headers={"Content-Type": "text/plain"})

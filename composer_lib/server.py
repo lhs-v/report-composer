@@ -81,9 +81,50 @@ class App:
         (folder / "읽어주세요.txt").write_text(readme_text(draft.get("title") or "제목 없음", manual), encoding="utf-8")
         return {"folder": str(folder), "files": copied, "paste_html": str(folder / "paste.html"), "manual_files": manual}
 
+    def save_picked_image(self, week: str, data_uri: str, name: str = "") -> str:
+        """Store an image picked out of a result page as a package-relative file so it can be attached later."""
+        import base64
+        import hashlib
+        head, _, b64 = data_uri.partition(",")
+        mime = head[5:].split(";")[0]
+        ext = {"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp", "image/svg+xml": ".svg"}.get(mime)
+        if not ext or not b64:
+            raise ValueError("지원하지 않는 이미지 형식")
+        raw = base64.b64decode(b64)
+        if len(raw) > 10 * 1024 * 1024:
+            raise ValueError("이미지가 10MB를 넘습니다")
+        folder = self.weeks_dir / week / "picked"
+        folder.mkdir(parents=True, exist_ok=True)
+        stem = re.sub(r"[^A-Za-z0-9]+", "-", name).strip("-")[:24] or "pick"
+        fname = f"{stem}-{hashlib.sha1(raw).hexdigest()[:8]}{ext}"
+        (folder / fname).write_bytes(raw)
+        return f"{week}/picked/{fname}"
+
     def paste(self, draft: dict) -> dict:
         doc, manual = paste_html(draft.get("title") or "제목 없음", draft.get("blocks") or [], self.weeks_dir)
         return {"html": doc, "manual_files": manual}
+
+
+PAGE_BASE_CSS = ("html,body{margin:0;padding:0}body{font-family:'Noto Sans KR','Malgun Gothic',system-ui,sans-serif;font-size:14px;line-height:1.5;"
+                 "padding:12px 16px;color:#1c2320;background:#fff}img,video,canvas{max-width:100%}")
+
+
+def wrap_page(fragment: str, base_href: str) -> str:
+    """Give an artifact-style fragment a real document head (the Claude viewer used to add one), point relative
+    media at /files/, and inject the element picker so the composer can lift pieces out of the page."""
+    low = fragment.lower()
+    m = re.search(r"<title>(.*?)</title>", fragment, re.S)
+    title = m.group(1) if m else "page"
+    body = fragment.replace(m.group(0), "", 1) if m else fragment
+    picker = '<script src="/static/picker.js"></script>'
+    if "<html" in low:
+        # a complete document: inject base + picker without disturbing the rest
+        out = re.sub(r"<head([^>]*)>", lambda mm: f"<head{mm.group(1)}><base href=\"{base_href}\">", fragment, count=1, flags=re.I)
+        return re.sub(r"</body>", picker + "</body>", out, count=1, flags=re.I) if "</body>" in out.lower() else out + picker
+    return ("<!doctype html>\n<html lang=\"ko\"><head><meta charset=\"utf-8\">"
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+            f"<base href=\"{base_href}\"><title>{title}</title><style>{PAGE_BASE_CSS}</style></head><body>"
+            f"{body}{picker}</body></html>")
 
 
 def _safe_child(base: Path, rel: str) -> Path | None:
@@ -151,6 +192,12 @@ def make_handler(app: App):
             if p.startswith("/files/"):
                 f = _safe_child(app.weeks_dir, p[len("/files/"):])
                 return self._file(f) if f else self._send(404, "not found", "text/plain")
+            if p.startswith("/page/"):
+                rel = p[len("/page/"):]
+                f = _safe_child(app.weeks_dir, rel)
+                if not f or f.suffix.lower() not in (".html", ".htm"):
+                    return self._send(404, "not found", "text/plain")
+                return self._send(200, wrap_page(f.read_text(encoding="utf-8", errors="replace"), "/files/" + urllib.parse.unquote(rel).rsplit("/", 1)[0] + "/"))
             if p == "/api/state":
                 return self._json(200, app.state())
             if p == "/api/library":
@@ -235,6 +282,15 @@ def make_handler(app: App):
             if m:
                 d = app.drafts.get(m.group(1))
                 return self._json(200, app.paste(d)) if d else self._json(404, {"error": "no such draft"})
+            if p == "/api/pick-image":
+                week, data = str(body.get("week") or ""), str(body.get("data") or "")
+                if not re.fullmatch(r"\d{4}-W\d{2}", week) or not data.startswith("data:image/"):
+                    return self._json(400, {"error": "week 또는 data 형식이 잘못됐습니다."})
+                try:
+                    src = app.save_picked_image(week, data, str(body.get("name") or ""))
+                except ValueError as e:
+                    return self._json(400, {"error": str(e)})
+                return self._json(200, {"src": src})
             if p == "/api/open":
                 target = Path(str(body.get("path") or "")).resolve()
                 try:
