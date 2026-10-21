@@ -71,7 +71,7 @@ class ConfluenceClientTests(unittest.TestCase):
         self.assertEqual(seq[-1], ("PUT", "content/900"))
         create = json.loads(self.t.calls[0]["body"])
         self.assertEqual((create["space"]["key"], create["ancestors"][0]["id"], create["title"]), ("AI", "77", "주간 성과 W42"))
-        upload = self.t.calls[1]
+        upload = self.t.calls[2]
         self.assertEqual(upload["headers"]["X-Atlassian-Token"], "nocheck")
         self.assertIn(b'filename="2026-W42_pages_alpha-01_preview.png"', upload["body"])
         self.assertIn(b"PNG", upload["body"])

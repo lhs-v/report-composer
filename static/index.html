@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Report Composer</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <b>Report Composer</b>
+  <span id="inboxStatus" class="pill">받은편지함 확인 중…</span>
+  <span class="sp"></span>
+  <label class="field">초안
+    <select id="draftSelect"></select>
+  </label>
+  <button id="newDraft" title="새 초안">＋ 새 초안</button>
+  <button id="dupDraft" title="현재 초안 복제">복제</button>
+  <button id="delDraft" class="danger" title="현재 초안 삭제">삭제</button>
+  <span class="sep"></span>
+  <button id="undoBtn" title="되돌리기 (Ctrl+Z)">↶</button>
+  <button id="redoBtn" title="다시 실행 (Ctrl+Shift+Z)">↷</button>
+  <span id="saveState" class="muted small">저장됨</span>
+</header>
+
+<main class="cols">
+  <aside class="col left">
+    <h2>주차 · 필터</h2>
+    <input id="search" type="search" placeholder="검색 (제목·본문)">
+    <div id="weekList" class="list"></div>
+    <div class="chips" id="typeChips">
+      <span class="muted small">종류</span>
+      <label><input type="checkbox" value="text" checked> 글</label>
+      <label><input type="checkbox" value="image" checked> 그림</label>
+      <label><input type="checkbox" value="file" checked> 파일</label>
+      <label><input type="checkbox" value="page" checked> 페이지</label>
+      <label><input type="checkbox" value="markdown" checked> md</label>
+    </div>
+    <p class="muted small" id="inboxHint"></p>
+  </aside>
+
+  <section class="col mid">
+    <h2>재료 <span class="muted small">클릭하면 초안 끝에 추가, 끌어 놓으면 그 자리에 삽입</span></h2>
+    <div id="library" class="library"></div>
+  </section>
+
+  <section class="col right">
+    <div class="draftHead">
+      <input id="draftTitle" class="title" placeholder="페이지 제목">
+      <div class="tabs">
+        <button data-tab="edit" class="active">편집</button>
+        <button data-tab="preview">미리보기</button>
+      </div>
+      <div class="actions">
+        <button id="addPara" title="빈 문단 추가">＋ 문단</button>
+        <button id="addHead" title="제목 추가">＋ 제목</button>
+        <button id="addDivider" title="구분선">— 구분선</button>
+        <button id="exportBtn" title="첨부할 파일과 본문 HTML을 한 폴더에 모읍니다">첨부 폴더</button>
+        <button id="copyHtml" title="Confluence 편집기에 붙여넣을 수 있게 본문을 서식 있는 텍스트로 복사">서식 복사</button>
+        <button id="publishBtn" class="primary">Confluence에 올리기</button>
+      </div>
+    </div>
+    <div id="editor" class="editor" data-tab="edit"></div>
+    <div id="preview" class="preview" data-tab="preview" hidden></div>
+    <p id="dropHint" class="muted small center">왼쪽 재료를 클릭하거나 여기로 끌어 놓으세요.</p>
+  </section>
+</main>
+
+<dialog id="publishDlg">
+  <form method="dialog" class="dlg">
+    <h3>Confluence에 올리기</h3>
+    <label>제목 <input id="pubTitle"></label>
+    <label>스페이스 <select id="pubSpace"></select></label>
+    <label>상위 페이지
+      <input id="pubParentQuery" placeholder="제목으로 검색 (비우면 기본 상위 페이지)">
+      <select id="pubParent" size="5"></select>
+    </label>
+    <p id="pubBinding" class="muted small"></p>
+    <p id="pubError" class="error"></p>
+    <div class="row">
+      <button value="cancel">취소</button>
+      <button id="pubGo" value="go" class="primary">올리기</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
