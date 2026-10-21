@@ -35,6 +35,8 @@ class FakeTransport:
         if method == "PUT" and path == "content/900":
             self.page_version = json.loads(body)["version"]["number"]
             return 200, {}, json.dumps({"id": "900", "version": {"number": self.page_version}, "_links": {"webui": "/pages/viewpage.action?pageId=900"}}).encode()
+        if method == "GET" and path.startswith("user/current"):
+            return 200, {}, json.dumps({"username": "hs.lee", "displayName": "이현상", "email": "hs@corp.com"}).encode()
         if method == "GET" and path.startswith("space"):
             return 200, {}, json.dumps({"results": [{"key": "AI", "name": "AI Lab"}]}).encode()
         if method == "GET" and path.startswith("content/search"):
@@ -124,6 +126,23 @@ class ConfluenceClientTests(unittest.TestCase):
         self.assertEqual(t.calls[0]["headers"]["Authorization"], expected)
         self.assertTrue(t.calls[0]["url"].startswith("https://corp.atlassian.net/wiki/rest/api/space"))
         self.assertNotIn("apitoken", repr(ConfluenceClient(cfg, transport=t)))
+
+    def test_whoami_reports_the_authenticated_user_and_auth_mode(self):
+        who = self.client.whoami()
+        self.assertEqual((who["username"], who["displayName"], who["auth"]), ("hs.lee", "이현상", "bearer"))
+        cloud = ConfluenceClient(ConfluenceConfig(base_url="https://x.atlassian.net/wiki", pat="t", email="e@x.com"), transport=FakeTransport())
+        self.assertEqual(cloud.whoami()["auth"], "basic")
+
+    def test_whoami_failure_includes_status_and_www_authenticate_hint(self):
+        class T(FakeTransport):
+            def __call__(self, method, url, headers, body):
+                self.calls.append({"method": method, "url": url, "headers": headers, "body": body})
+                return 401, {"WWW-Authenticate": "OAuth realm=\"sso\""}, b"<html>login</html>"
+        client = ConfluenceClient(CFG, transport=T())
+        with self.assertRaises(ConfluenceError) as ctx:
+            client.whoami()
+        self.assertEqual(ctx.exception.status, 401)
+        self.assertIn("WWW-Authenticate", str(ctx.exception))
 
 
 if __name__ == "__main__":

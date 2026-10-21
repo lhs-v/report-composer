@@ -311,6 +311,12 @@
       $("#pubParent").innerHTML = cfg.default_parent_id ? `<option value="${esc(cfg.default_parent_id)}" selected>기본 상위 페이지 (${esc(cfg.default_parent_id)})</option>` : "";
     } catch (e) { $("#pubError").textContent = e.message; }
   }
+  $("#pubTest").onclick = async () => {
+    $("#pubError").textContent = "연결 확인 중…";
+    try { const w = await api("/api/confluence/whoami");
+      $("#pubError").textContent = ""; $("#pubBinding").textContent = `연결 성공: ${w.displayName || w.username} (${w.username}) · 인증 ${w.auth === "basic" ? "Basic(email+토큰)" : "Bearer(PAT)"} · ${w.base_url}`; }
+    catch (e) { $("#pubError").textContent = e.message; }
+  };
   let parentTimer = null;
   $("#pubParentQuery").oninput = () => { clearTimeout(parentTimer); parentTimer = setTimeout(async () => {
     try { const pages = await api(`/api/confluence/search?space=${encodeURIComponent($("#pubSpace").value)}&q=${encodeURIComponent($("#pubParentQuery").value)}`);

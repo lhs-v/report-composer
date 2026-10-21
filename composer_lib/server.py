@@ -153,6 +153,8 @@ def make_handler(app: App):
             if m:
                 d = app.drafts.get(m.group(1))
                 return self._json(200, d) if d else self._json(404, {"error": "no such draft"})
+            if p == "/api/confluence/whoami":
+                return self._confluence(lambda c: c.whoami())
             if p == "/api/confluence/spaces":
                 return self._confluence(lambda c: c.spaces())
             if p == "/api/confluence/search":
@@ -166,7 +168,13 @@ def make_handler(app: App):
             try:
                 return self._json(200, fn(app.client()))
             except ConfluenceError as e:
-                hint = " PAT가 만료됐거나 권한이 없습니다." if e.status in (401, 403) else ""
+                mode = "Basic(email+토큰)" if app.cfg.confluence.email else "Bearer(PAT)"
+                hint = ""
+                if e.status == 401:
+                    hint = (f" 현재 인증 방식은 {mode}입니다. Data Center(주소에 pageId= 또는 /spaces/KEY/pages/번호, /wiki 없음)면 email을 비우고 PAT를, "
+                            "Cloud(atlassian.net 또는 /wiki 포함)면 email과 API 토큰을 넣으세요. 토큰 만료·재발급도 확인하세요.")
+                elif e.status == 403:
+                    hint = " 인증은 됐지만 권한이 없습니다. 스페이스/페이지 권한을 확인하세요."
                 return self._json(502, {"error": f"Confluence 오류 {e.status}: {e.message}{hint}", "status": e.status})
             except OSError as e:
                 msg = str(e)

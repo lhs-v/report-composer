@@ -76,12 +76,16 @@ class ConfluenceClient:
         elif raw is not None:
             body = raw
             headers["Content-Type"] = content_type or "application/octet-stream"
-        status, _, data = self.transport(method, url, self._headers(headers), body)
+        status, resp_headers, data = self.transport(method, url, self._headers(headers), body)
         if status >= 400:
+            text = data.decode("utf-8", "replace")
             try:
-                msg = json.loads(data.decode("utf-8", "replace")).get("message") or data.decode("utf-8", "replace")[:300]
+                msg = json.loads(text).get("message") or text[:300]
             except ValueError:
-                msg = data.decode("utf-8", "replace")[:300]
+                msg = ("HTML 응답(로그인 페이지로 보임)" if "<html" in text.lower() else text[:300])
+            www = next((v for k, v in (resp_headers or {}).items() if k.lower() == "www-authenticate"), None)
+            if www:
+                msg = f"{msg} [WWW-Authenticate: {www}]"
             raise ConfluenceError(status, str(msg).replace(self.cfg.pat, "***") if self.cfg.pat else str(msg))
         if not data:
             return {}
@@ -89,6 +93,13 @@ class ConfluenceClient:
             return json.loads(data.decode("utf-8"))
         except ValueError:
             return {}
+
+    # ----- diagnostics -----
+    def whoami(self) -> dict:
+        """Who the server thinks we are. The first thing to run when a 401 shows up."""
+        u = self._call("GET", "user/current")
+        return {"username": u.get("username") or u.get("accountId") or "", "displayName": u.get("displayName") or "",
+                "email": u.get("email") or "", "auth": "basic" if self.cfg.email else "bearer", "base_url": self.base}
 
     # ----- navigation -----
     def spaces(self, limit: int = 50) -> list[dict]:

@@ -102,6 +102,11 @@ class ServerTests(unittest.TestCase):
         self.assertTrue((folder / "body.html").exists())
         self.assertTrue((folder / "2026-W42_pages_alpha-01_media_v.mp4").exists())
 
+    def test_whoami_route(self):
+        status, who = self.req("/api/confluence/whoami")
+        self.assertEqual(status, 200)
+        self.assertEqual(who["username"], "hs.lee")
+
     def test_post_without_json_content_type_is_rejected(self):
         status, _ = self.req("/api/drafts", "POST", b'{"title":"x"}', headers={"Content-Type": "text/plain"})
         self.assertEqual(status, 415)
