@@ -191,51 +191,68 @@
   $$(".midTabs button[data-mid]").forEach(btn => btn.onclick = () => { $$(".midTabs button").forEach(b => b.classList.toggle("active", b === btn));
     const r = btn.dataset.mid === "reader"; $("#reader").hidden = !r; $("#library").hidden = r; });
 
-  // ---------- inline page viewer: lift elements out of a result page ----------
-  let pvSrc = null;
+  // ---------- popup page viewer: lift elements out of a result page ----------
+  let pvSrc = null, picked = [];
   function openPageViewer(src, title) {
-    pvSrc = src;
+    pvSrc = src; picked = [];
     $("#pvTitle").textContent = title || src.split("/").slice(-2, -1)[0];
     $("#pvFrame").src = `/page/${src}`;
-    $("#pageViewer").hidden = false;
-    $("#pageViewer").scrollIntoView({ block: "start" });
+    renderRail();
+    const dlg = $("#pageDlg"); if (!dlg.open) dlg.showModal();
   }
-  $("#pvClose").onclick = () => { $("#pageViewer").hidden = true; $("#pvFrame").src = "about:blank"; pvSrc = null; };
+  function closePageViewer() { const dlg = $("#pageDlg"); if (dlg.open) dlg.close(); $("#pvFrame").src = "about:blank"; pvSrc = null; }
+  $("#pvClose").onclick = closePageViewer;
+  $("#pageDlg").addEventListener("close", () => { $("#pvFrame").src = "about:blank"; pvSrc = null; });
   $("#pvNewTab").onclick = () => { if (pvSrc) window.open(`/page/${pvSrc}`, "_blank"); };
-  $("#pvWide").onclick = () => { const v = $("#pageViewer"); v.classList.toggle("wide"); $("#pvWide").textContent = v.classList.contains("wide") ? "좁게" : "넓게"; };
-  $("#pvSize").onclick = () => { const v = $("#pageViewer"); const order = ["short", "", "tall"]; const cur = v.classList.contains("short") ? 0 : v.classList.contains("tall") ? 2 : 1;
-    v.classList.remove("short", "tall"); const next = order[(cur + 1) % 3]; if (next) v.classList.add(next); v.style.height = ""; };
+  function renderRail() {
+    $("#pdCount").textContent = picked.length ? `${picked.length}개` : "";
+    $("#pdList").innerHTML = picked.map((b, i) => `<li><span class="t">${b.type === "image" ? `<img src="/files/${b.src}" alt="">` : esc(b.type === "bullets" ? (b.items || []).join(" / ") : b.type === "table" ? `표 ${(b.rows || []).length}행` : b.type === "file" ? "📎 " + (b.caption || b.src) : b.text || b.caption || b.type)}</span><button data-undo="${i}" title="되돌리기">✕</button></li>`).join("")
+      || `<li class="muted" style="list-style:none;margin-left:-18px">아직 없음</li>`;
+    $$("#pdList [data-undo]").forEach(btn => btn.onclick = () => {
+      const b = picked.splice(+btn.dataset.undo, 1)[0];
+      const at = state.draft.blocks.findIndex(x => x.id === b.id); if (at >= 0) state.draft.blocks.splice(at, 1);
+      commit(); renderEditor(); renderRail();
+    });
+  }
   const localSrc = u => (u && u.includes("/files/")) ? decodeURIComponent(u.split("/files/")[1]) : null;
+  async function applyPick(m, week, ref) {
+    let block = null;
+    if (m.tag === "img" || m.tag === "svg" || m.tag === "canvas") {
+      let src = m.tag === "img" ? localSrc(m.src) : null;
+      if (!src && m.data) src = (await api("/api/pick-image", { method: "POST", body: { week, data: m.data, name: m.caption || m.alt || m.tag } })).src;
+      if (!src) { toast("이 그림은 가져올 수 없습니다 (외부 주소)."); return null; }
+      block = { type: "image", src, caption: m.caption || m.alt || "" };
+    } else if (m.tag === "video" || m.tag === "audio") {
+      const src = localSrc(m.src);
+      if (!src) { toast("이 미디어는 패키지 안에 없어 첨부할 수 없습니다."); return null; }
+      block = { type: "file", src, caption: m.caption || src.split("/").pop() };
+    } else if (m.tag === "table") {
+      if (!m.rows || !m.rows.length) return null;
+      block = { type: "table", rows: m.rows, header: !!m.header };
+    } else if (m.tag === "li") {
+      const prev = state.draft.blocks[state.draft.blocks.length - 1];
+      if (prev && prev.type === "bullets" && prev.source_ref === ref) { prev.items.push(m.text); return prev; }
+      block = { type: "bullets", items: [m.text] };
+    } else if (m.level) {
+      block = { type: "heading", level: m.level <= 2 ? 2 : 3, text: m.text };
+    } else if (m.tag === "pre") {
+      block = { type: "paragraph", text: "`" + (m.text || "").replace(/`/g, "'") + "`" };
+    } else {
+      if (!m.text) return null;
+      block = { type: "paragraph", text: m.text.replace(/\s+/g, " ") };
+    }
+    block.id = uid(); block.source_ref = ref;
+    state.draft.blocks.push(block);
+    return block;
+  }
   window.addEventListener("message", async e => {
     const m = e.data; if (!m || m.kind !== "cp-pick" || !pvSrc) return;
-    const week = pvSrc.split("/")[0];
-    const ref = `page:${pvSrc}`;
+    const week = pvSrc.split("/")[0], ref = `page:${pvSrc}`;
     try {
-      if (m.tag === "img") {
-        let src = localSrc(m.src);
-        if (!src && m.data) src = (await api("/api/pick-image", { method: "POST", body: { week, data: m.data, name: m.caption || m.alt || "pick" } })).src;
-        if (!src) return toast("이 그림은 가져올 수 없습니다 (외부 주소).");
-        state.draft.blocks.push({ id: uid(), type: "image", src, caption: m.caption || m.alt || "", source_ref: ref });
-      } else if (m.tag === "video" || m.tag === "audio") {
-        const src = localSrc(m.src);
-        if (!src) return toast("이 미디어는 패키지 안에 없어 첨부할 수 없습니다.");
-        state.draft.blocks.push({ id: uid(), type: "file", src, caption: m.caption || src.split("/").pop(), source_ref: ref });
-      } else if (m.tag === "table") {
-        if (!m.rows || !m.rows.length) return;
-        state.draft.blocks.push({ id: uid(), type: "table", rows: m.rows, header: !!m.header, source_ref: ref });
-      } else if (m.tag === "li") {
-        const prev = state.draft.blocks[state.draft.blocks.length - 1];
-        if (prev && prev.type === "bullets" && prev.source_ref === ref) prev.items.push(m.text);
-        else state.draft.blocks.push({ id: uid(), type: "bullets", items: [m.text], source_ref: ref });
-      } else if (m.level) {
-        state.draft.blocks.push({ id: uid(), type: "heading", level: m.level <= 2 ? 2 : 3, text: m.text, source_ref: ref });
-      } else if (m.tag === "pre") {
-        state.draft.blocks.push({ id: uid(), type: "paragraph", text: "`" + m.text.replace(/`/g, "'") + "`", source_ref: ref });
-      } else {
-        if (!m.text) return;
-        state.draft.blocks.push({ id: uid(), type: "paragraph", text: m.text.replace(/\s+/g, " "), source_ref: ref });
-      }
-      commit(); renderEditor(); toast("페이지에서 가져왔습니다.", 1500);
+      const items = m.tag === "bundle" ? (m.items || []) : [m];
+      let n = 0;
+      for (const it of items) { const b = await applyPick(it, week, ref); if (b && !picked.includes(b)) { picked.push(b); n++; } }
+      if (n) { commit(); renderEditor(); renderRail(); toast(m.tag === "bundle" ? `구역에서 ${n}개를 담았습니다.` : "담았습니다.", 1200); }
     } catch (err) { toast("가져오기 실패: " + esc(err.message)); }
   });
 

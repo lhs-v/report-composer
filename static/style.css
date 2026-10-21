@@ -59,14 +59,19 @@ input, select, textarea { font: inherit; font-size: 13px; color: var(--txt); bac
 .reader details.md pre { white-space:pre-wrap; font: inherit; color:var(--txt); background:transparent; margin:6px 0 0; }
 .reader .weekly { margin-top:14px; }
 .reader .weekly h3 { font-size:15px; margin:0 0 6px; }
-.pageViewer { position:relative; background:var(--panel); border:1px solid var(--acc); border-radius:10px; margin-bottom:10px; display:flex; flex-direction:column; height:55vh; min-height:260px; resize:vertical; overflow:hidden; }
-.pageViewer.tall { height:80vh; } .pageViewer.short { height:35vh; }
-.pvHead { display:flex; align-items:center; gap:8px; padding:6px 10px; border-bottom:1px solid var(--line); font-size:13px; flex-wrap:nowrap; }
-.pvHead b { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:50%; }
-.pvHead .small { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0; }
-.pvHead button { white-space:nowrap; }
-.pageViewer.wide { position:fixed; left:8px; top:56px; width:calc(62vw - 16px); height:calc(100vh - 64px); z-index:30; box-shadow:0 10px 40px rgba(0,0,0,.35); }
-.pageViewer iframe { flex:1; width:100%; border:0; background:#fff; border-radius:0 0 10px 10px; }
+dialog.pageDlg { width:min(1500px, 94vw); height:92vh; max-width:none; max-height:none; padding:0; border:1px solid var(--acc); border-radius:12px; background:var(--panel); color:var(--txt); display:none; flex-direction:column; overflow:hidden; }
+dialog.pageDlg[open] { display:flex; }
+.pdHead { display:flex; align-items:center; gap:10px; padding:8px 14px; border-bottom:1px solid var(--line); font-size:13px; }
+.pdHead b { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:40%; }
+.pdHead .small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.pdBody { flex:1; display:grid; grid-template-columns: 1fr 260px; min-height:0; }
+.pdBody iframe { width:100%; height:100%; border:0; background:#fff; }
+.pdRail { border-left:1px solid var(--line); padding:10px 12px; overflow:auto; font-size:13px; }
+.pdRail h4 { margin:0 0 8px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--sub); }
+.pdRail ol { margin:0; padding-left:18px; } .pdRail li { margin:4px 0; display:flex; gap:6px; align-items:flex-start; }
+.pdRail li .t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pdRail li button { padding:0 6px; font-size:11px; }
+.pdRail img { max-width:100%; max-height:60px; border-radius:4px; border:1px solid var(--line); }
 .reader .media { margin-top:6px; }
 .reader .media video, .reader .media audio { width:100%; max-height:260px; border-radius:6px; background:#000; }
 .reader .media .cap { font-size:12px; color:var(--sub); display:flex; gap:8px; align-items:center; margin-top:2px; }
