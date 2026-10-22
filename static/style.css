@@ -196,3 +196,5 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 .library .oneLine { margin:2px 0 8px 2px; }
 .lib-block.optional { opacity:.55; border-left:2px dashed var(--line); }
 .lib-block.optional .txt { white-space:pre-line; }
+.err { color:#b4541f; font-size:12px; margin:4px 0 8px; }
+details.skip > summary, .stream.skip > summary { opacity:.6; }

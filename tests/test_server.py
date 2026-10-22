@@ -48,6 +48,49 @@ class ServerTests(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, e.read()
 
+    def raw(self, path, host, method="GET", headers=None, data=None):
+        import http.client
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        h = {"Host": host, **(headers or {})}
+        body = json.dumps(data).encode() if data is not None else None
+        if body:
+            h["Content-Type"] = "application/json"
+        c.request(method, path, body=body, headers=h)
+        r = c.getresponse()
+        out = (r.status, dict(r.getheaders()), r.read())
+        c.close()
+        return out
+
+    def test_result_pages_live_on_their_own_origin_and_cannot_reach_the_api(self):
+        ui, page = f"127.0.0.1:{self.port}", f"localhost:{self.port}"
+        status, headers, _ = self.raw("/page/2026-W42/pages/alpha-01/index.html", ui)
+        self.assertEqual(status, 302)
+        self.assertEqual(headers["Location"], f"http://{page}/page/2026-W42/pages/alpha-01/index.html")
+        self.assertEqual(self.raw("/page/2026-W42/pages/alpha-01/index.html", page)[0], 200)
+        self.assertEqual(self.raw("/files/2026-W42/pages/alpha-01/preview.png", page)[0], 200)
+        self.assertEqual(self.raw("/static/picker.js", page)[0], 200)
+        self.assertEqual(self.raw("/api/state", page)[0], 403)                       # a page's own-origin call
+        self.assertEqual(self.raw("/api/drafts", ui, "POST", {"Origin": f"http://{page}"}, {"title": "x"})[0], 403)
+        self.assertEqual(self.raw("/api/state", "evil.example")[0], 403)             # DNS rebinding
+        self.assertEqual(self.raw("/", page)[0], 302)
+        status, _, body = self.raw("/api/state", ui)
+        self.assertEqual(json.loads(body)["page_origin"], f"http://{page}")
+        self.assertEqual(self.raw("/api/drafts", ui, "POST", {"Origin": f"http://{ui}"}, {"title": "ok"})[0], 200)
+
+    def test_raw_package_files_never_run_as_documents_on_either_host(self):
+        for host in (f"127.0.0.1:{self.port}",):
+            status, headers, _ = self.raw("/files/2026-W42/pages/alpha-01/index.html", host)
+            self.assertEqual(status, 200)
+            csp = headers.get("Content-Security-Policy", "")
+            self.assertIn("sandbox", csp)
+            self.assertNotIn("allow-same-origin", csp)
+            self.assertNotIn("allow-scripts", csp)
+
+    def test_html_package_files_on_the_page_host_open_as_pages_with_the_picker(self):
+        status, headers, _ = self.raw("/files/2026-W42/pages/alpha-01/index.html", f"localhost:{self.port}")
+        self.assertEqual(status, 302)
+        self.assertEqual(headers["Location"], f"http://localhost:{self.port}/page/2026-W42/pages/alpha-01/index.html")
+
     def test_index_and_state_with_masked_pat(self):
         status, body = self.req("/")
         self.assertEqual(status, 200)

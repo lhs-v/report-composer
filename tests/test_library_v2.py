@@ -140,7 +140,7 @@ class LibraryV2Tests(unittest.TestCase):
         self.assertEqual(blocks[0]["id"], f"{WEEK}:alpha:{C1}:heading:0")
         self.assertEqual(blocks[0]["text"], "F5 실험 결론")
         self.assertEqual((blocks[1]["label"], blocks[1]["text"]), ("요약", "폰에 올릴 위치별 활동 판단 방법은 아직 없다."))
-        self.assertEqual(blocks[1]["id"], f"{WEEK}:alpha:{C1}:paragraph:0")
+        self.assertEqual(blocks[1]["id"], f"{WEEK}:alpha:{C1}:lead:0")
         self.assertEqual([(b["text"], b["unit"]) for b in blocks[2:4]],
                          [("세 위치에서 받아쓰기 정확도를 비교했다.", "U-a43e2f42-10131823"), ("주머니 위치만 기준을 넘지 못했다.", "U-a43e2f42-10141010")])
         self.assertEqual(blocks[3]["id"], f"{WEEK}:alpha:{C1}:bullet:1")
@@ -227,6 +227,132 @@ class LibraryV2Tests(unittest.TestCase):
         self.assertEqual(lib["2026-W42"]["schema"], 1)
         self.assertEqual(lib["2026-W42"]["projects"][0]["streams"][0]["id"], "2026-W42:alpha:0")
         self.assertEqual(lib[WEEK]["schema"], 2)
+
+
+class ReviewRegressionTests(unittest.TestCase):
+    """The composer v2 review (2026-10-22): hostile ids, re-received weeks, id stability, project-level sentences,
+    malformed packages, images among page files, daily_list results, newer schemas."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.weeks = Path(self.tmp.name) / "weeks"
+        self.w = write_v2_package(self.weeks)
+        self.data = json.loads((self.w / "outcomes.json").read_text(encoding="utf-8"))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def rebuild(self):
+        (self.w / "outcomes.json").write_text(json.dumps(self.data, ensure_ascii=False), encoding="utf-8")
+        week = build_library(self.weeks)[0]
+        return week, {p["short"]: p for p in week["projects"]}
+
+    def test_chapter_ids_that_could_break_out_of_an_attribute_are_replaced_and_duplicates_split(self):
+        chs = self.data["projects"]["C--Claude-alpha"]["chapters"]
+        chs[0]["id"] = 'C-x" onmouseover="alert(1)'
+        chs[1]["id"] = "C-0"
+        chs.append(dict(chs[1], title="세 번째"))
+        _, projects = self.rebuild()
+        ids = [s["chapter"] for s in projects["alpha"]["streams"]]
+        self.assertEqual(ids, ["C-0", "C-0-1", "C-0-2"])
+        for s in projects["alpha"]["streams"]:
+            for b in s["blocks"]:
+                self.assertNotIn('"', b["id"])
+                self.assertEqual(len(b["id"].split(":")), 5, b["id"])
+
+    def test_the_recorded_md_name_wins_over_an_old_file_with_the_same_number(self):
+        (self.w / "alpha-01-old-title.md").write_text("# 예전 제목", encoding="utf-8")
+        self.data["projects"]["C--Claude-alpha"]["chapters"][0]["md"] = "alpha-01-f5.md"
+        _, projects = self.rebuild()
+        mds = [b["caption"] for b in projects["alpha"]["streams"][0]["blocks"] if b["type"] == "markdown" and not b.get("eid")]
+        self.assertEqual(mds, ["alpha-01-f5.md"])
+
+    def test_without_a_recorded_name_the_writer_naming_rule_picks_the_file(self):
+        (self.w / "alpha-01-old-title.md").write_text("# 예전 제목", encoding="utf-8")
+        (self.w / "alpha-01-F5.md").write_text("# F5 실험 결론", encoding="utf-8")   # label "F5" -> slug "F5"
+        _, projects = self.rebuild()
+        mds = [b["caption"] for b in projects["alpha"]["streams"][0]["blocks"] if b["type"] == "markdown" and not b.get("eid")]
+        self.assertEqual(mds, ["alpha-01-F5.md"])
+
+    def test_adding_a_lead_or_losing_a_copy_keeps_the_other_block_ids(self):
+        before, _ = self.rebuild()
+        ch = self.data["projects"]["C--Claude-alpha"]["chapters"][0]
+        ch["lead"] = ""
+        (self.w / "texts" / "U-a43e2f42-10131823.md").unlink()        # the text excerpt's copy disappears
+        after, _ = self.rebuild()
+        ids = lambda wk: {b["id"]: b for p in wk["projects"] for s in p["streams"] for b in s["blocks"]}
+        old, new = ids(before), ids(after)
+        for role in ("change", "units"):
+            key = f"{WEEK}:alpha:{C1}:{role}:0"
+            self.assertIn(key, old)
+            self.assertEqual(new[key]["text"], old[key]["text"])
+        page = f"{WEEK}:alpha:{C1}:page:0"
+        self.assertEqual(new[page]["src"], old[page]["src"])
+
+    def test_one_line_and_overview_are_pickable_blocks(self):
+        week, projects = self.rebuild()
+        one = projects["gamma"]["blocks"][0]
+        self.assertEqual((one["id"], one["text"]), (f"{WEEK}:gamma:one_line:paragraph:0", "자잘한 설정만 손봤다."))
+        self.assertEqual(find_block(self.weeks, one["id"])["text"], "자잘한 설정만 손봤다.")
+        self.assertEqual(find_block(self.weeks, f"{WEEK}:alpha:overview:paragraph:0")["text"], "F5 결론과 받아쓰기 도구 정리")
+
+    def test_a_malformed_project_does_not_take_down_the_library(self):
+        self.data["projects"]["C--Claude-alpha"]["chapters"][0]["results"].append({"eid": "x"})
+        self.data["projects"]["C--Claude-beta"]["units"] = 5               # not a list
+        week, projects = self.rebuild()
+        self.assertTrue(projects["alpha"]["streams"])
+        self.assertEqual(projects["beta"]["mode"], "error")
+        self.assertIn("gamma", projects)
+
+    def test_images_published_with_a_page_are_image_blocks(self):
+        page = self.w / "pages" / "zz-unrelated-name"
+        (page / "fig.png").write_bytes(b"PNG")
+        ev = self.data["projects"]["C--Claude-alpha"]["evidence"][0]
+        ev["package"]["files"].append("pages/zz-unrelated-name/fig.png")
+        _, projects = self.rebuild()
+        fig = next(b for b in projects["alpha"]["streams"][0]["blocks"] if b.get("src", "").endswith("fig.png"))
+        self.assertEqual(fig["type"], "image")
+
+    def test_daily_list_projects_show_the_copies_their_package_carries(self):
+        (self.w / "assets" / "log.txt").write_text("로그", encoding="utf-8")
+        beta = self.data["projects"]["C--Claude-beta"]
+        beta["evidence"] = [{"n": 1, "eid": "E-fLOG", "kind": "file", "title": "로그 묶음", "export": "ok", "package": {"href": "assets/log.txt"}}]
+        _, projects = self.rebuild()
+        blocks = projects["beta"]["streams"][0]["blocks"]
+        self.assertTrue(any(b.get("eid") == "E-fLOG" for b in blocks))
+
+    def test_block_ids_are_unique_even_when_a_text_result_sits_beside_the_chapter_md(self):
+        ch = self.data["projects"]["C--Claude-alpha"]["chapters"][0]
+        ch["results"] = ["E-tU-a43e2f42-10131823"]          # the only result is a reply excerpt (.md)
+        week, projects = self.rebuild()
+        ids = [b["id"] for p in week["projects"] for s in p["streams"] for b in s["blocks"]] +               [b["id"] for p in week["projects"] for b in p.get("blocks") or []] + [a["id"] for a in week["assets"]]
+        self.assertEqual(len(ids), len(set(ids)))
+        md = next(b for b in projects["alpha"]["streams"][0]["blocks"] if b["type"] == "markdown" and not b.get("eid"))
+        self.assertEqual(md["id"], f"{WEEK}:alpha:{C1}:md:0")
+        self.assertEqual(find_block(self.weeks, md["id"])["caption"], "alpha-01-f5.md")
+
+    def test_one_line_projects_offer_the_copies_their_package_carries(self):
+        (self.w / "assets" / "small.png").write_bytes(b"PNG")
+        gamma = self.data["projects"]["C--Claude-gamma"]
+        gamma["evidence"] = [{"n": 1, "eid": "E-fSMALL", "kind": "file", "title": "작은 그림", "export": "ok", "package": {"href": "assets/small.png", "preview": "assets/small.png"}}]
+        _, projects = self.rebuild()
+        self.assertTrue(any(b.get("eid") == "E-fSMALL" for b in projects["gamma"]["blocks"]))
+
+    def test_pages_of_units_no_chapter_took_are_pickable(self):
+        (self.w / "assets" / "loose.csv").write_text("a", encoding="utf-8")
+        alpha = self.data["projects"]["C--Claude-alpha"]
+        alpha["units"].append({"id": "U-loose-0001", "when": "w", "line": "l", "chapter": None})
+        alpha["evidence"].append({"n": 50, "eid": "E-fLOOSE", "kind": "file", "unit": "U-loose-0001", "title": "떠돌이 표", "export": "ok",
+                                  "package": {"href": "assets/loose.csv"}})
+        _, projects = self.rebuild()
+        self.assertTrue(any(b.get("eid") == "E-fLOOSE" for b in projects["alpha"]["blocks"]))
+
+    def test_a_newer_schema_is_read_as_chapters_with_a_warning(self):
+        self.data["schema"] = 3
+        week, projects = self.rebuild()
+        self.assertEqual(week["schema"], 2)
+        self.assertIn("v3", week["warning"])
+        self.assertTrue(projects["alpha"]["streams"])
 
 
 if __name__ == "__main__":

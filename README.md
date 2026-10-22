@@ -8,7 +8,7 @@
 2. `composer.config.example.json`을 복사해 `composer.config.json`을 만들고 채웁니다.
    - `inbox_dir`: 메일 첨부 zip을 저장할 폴더 (기본 `~/Downloads/report-inbox`). 없으면 만들어집니다.
    - 페이지 주소가 `…/pages/viewpage.action?pageId=숫자` 형식이면 **Data Center**: `base_url`은 호스트까지(예: `https://confluence.example.com`), `pat`는 프로필 → **Personal Access Tokens**에서 만든 토큰, `email`은 비웁니다. `default_parent_id`는 `pageId=` 뒤 숫자.
-   - 페이지 주소가 `…/wiki/spaces/SODA/pages/숫자/제목` 형식이면 **Cloud**: `base_url`은 `/spaces/` 앞까지(`/wiki` 포함, 예: `https://example.atlassian.net/wiki`), `pat`에 id.atlassian.com → 보안 → **API 토큰**, `email`에 Atlassian 계정 이메일. `default_space`는 `SODA`, `default_parent_id`는 `pages/` 뒤 숫자.
+   - 페이지 주소가 `…/wiki/spaces/KEY/pages/숫자/제목` 형식이면 **Cloud**: `base_url`은 `/spaces/` 앞까지(`/wiki` 포함, 예: `https://example.atlassian.net/wiki`), `pat`에 id.atlassian.com → 보안 → **API 토큰**, `email`에 Atlassian 계정 이메일. `default_space`는 그 KEY, `default_parent_id`는 `pages/` 뒤 숫자.
    - 사내 인증서로 SSL 오류가 나면 `confluence.ca_bundle`에 사내 CA 인증서 파일(PEM) 경로를 넣습니다.
 3. 실행: `python composer.py` → 브라우저가 `http://127.0.0.1:8790`을 엽니다. (창을 닫아도 서버는 터미널이 살아 있는 동안 유지됩니다.)
 
@@ -37,8 +37,14 @@ PowerShell에서 더블클릭 실행을 원하면 바로가기 대상에 `python
 - 정리 단위 하나가 흐름 하나처럼 보입니다. 제목 옆에 종류·추천 여부·구역 표시가 붙고, 요약 → 본문 문장 → 결과(캡처·페이지·파일·응답 발췌) 순서로 나옵니다. 부록(`tier: appendix`) 단위는 본문 단위 뒤 "부록" 아래에 모입니다.
 - 결과 파일은 폴더 이름이 아니라 `evidence[].package`에 적힌 경로로만 찾습니다. 패키지에 사본이 없는 결과물은 보이지 않습니다.
 - "지난주 대비"는 작게 보이고, 근거 작업 단위는 "근거" 아래 접혀 있습니다. 둘 다 "흐름 전체 추가"에 들어가지 않으며, 필요하면 ＋로 따로 담습니다. 조각 목록에서는 흐리게 표시됩니다.
-- 한 줄로 접힌 프로젝트(`one_line`)는 그 문장만 흐리게, 작업 단위 목록만 있는 프로젝트(`daily_list`)는 "작업 단위 목록" 하나로 보입니다. 주간 문서(weekly.md)는 "주간 개요"로 표시됩니다.
-- 조각 id는 `<주차>:<프로젝트>:<정리 단위 id>:<종류>:<n>`이라 같은 패키지를 다시 받아도 초안의 "사용됨" 표시가 유지됩니다.
+- 한 줄로 접힌 프로젝트(`one_line`)는 그 문장만 흐리게, 작업 단위 목록만 있는 프로젝트(`daily_list`)는 "작업 단위 목록" 하나로 보입니다(패키지에 사본이 있는 결과물도 함께). 한 줄 문장과 프로젝트 개요도 ＋로 담을 수 있습니다. 주간 문서(weekly.md)는 "주간 개요"로 표시됩니다.
+- 추천 여부가 "생략"인 정리 단위는 처음에 접혀 있고 흐리게 보입니다.
+- 정리 단위의 md 파일은 패키지가 적어 둔 이름(`md`)으로 찾습니다. 같은 주를 다시 받아 예전 파일이 남아 있어도 섞이지 않습니다.
+- 조각 id는 `<주차>:<프로젝트>:<정리 단위 id>:<종류>:<n>`입니다. 요약·지난주 대비·근거는 종류 자리에 `lead`·`change`·`units`를, 결과물은 그 정리 단위 결과 목록 안의 순서를 씁니다. 그래서 같은 주를 다시 만들어 보내 요약이 생기거나 사본 하나가 빠져도 나머지 조각의 "사용됨" 표시가 유지됩니다.
+
+## 결과 페이지는 따로 된 주소에서 열립니다 (v0.7.0부터)
+
+화면과 API는 `http://127.0.0.1:<포트>`, 결과 페이지는 `http://localhost:<포트>`에서 열립니다. 메일로 받은 결과 페이지 안의 스크립트가 초안이나 Confluence 게시 API를 부르지 못하게 주소(출처)를 나눈 것입니다. 페이지에서 조각을 집는 것은 그대로 됩니다. 페이지에서 집은 조각은 가운데 칸이나 그 칸이 연 새 창에 떠 있는 페이지에서 온 것만 받고, 파일은 그 주차 폴더 안의 것만 담깁니다. 회사 PC에서 `localhost`가 열리지 않으면 `composer.config.json`에 `"page_host"`로 다른 이름을 줄 수 있습니다. 127.0.0.1로 가는 호스트 이름이어야 하고(예: `composer-pages.localhost`), IP 주소나 포트를 주면 `localhost`로 되돌립니다.
 
 ## 데이터 위치
 

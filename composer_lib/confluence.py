@@ -17,7 +17,7 @@ import urllib.request
 from pathlib import Path
 
 from .config import ConfluenceConfig
-from .storage import attachments_for, render
+from .storage import attachments_for, package_file, render
 
 TIMEOUT = 60
 
@@ -165,8 +165,8 @@ class ConfluenceClient:
 
         existing = self.list_attachments(page_id)
         for filename, src in attachments_for(draft.get("blocks") or []).items():
-            fp = weeks_dir / src
-            if not fp.is_file():
+            fp = package_file(weeks_dir, src)
+            if fp is None:
                 continue
             self.upload_attachment(page_id, filename, fp.read_bytes(), existing.get(filename))
 

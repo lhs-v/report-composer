@@ -20,6 +20,7 @@
   // ---------- data ----------
   async function loadAll() {
     const [st, lib, drafts] = await Promise.all([api("/api/state"), api("/api/library"), api("/api/drafts")]);
+    state.pageOrigin = st.page_origin;
     state.weeksInfo = st; state.library = lib; state.drafts = drafts;
     renderInbox(st);
     if (!state.week && lib.length) state.week = lib[0].week;
@@ -54,8 +55,8 @@
     return (b.text || "").toLowerCase().includes(q) || (b.caption || "").toLowerCase().includes(q) || (b.label || "").toLowerCase().includes(q);
   };
   function renderWeeks() {
-    $("#weekList").innerHTML = state.library.map(w => `<div class="week ${w.week === state.week ? "active" : ""}" data-week="${w.week}">
-      <span>${w.week}</span><span class="n">${w.since ? w.since.slice(5) + "~" + (w.until || "").slice(5) : ""}</span></div>`).join("") ||
+    $("#weekList").innerHTML = state.library.map(w => `<div class="week ${w.week === state.week ? "active" : ""}" data-week="${esc(w.week)}">
+      <span>${esc(w.week)}</span><span class="n">${w.since ? esc(String(w.since).slice(5) + "~" + String(w.until || "").slice(5)) : ""}</span></div>`).join("") ||
       `<p class="muted small">아직 풀린 주차가 없습니다.</p>`;
     $$("#weekList .week").forEach(el => el.onclick = () => { state.week = el.dataset.week; renderWeeks(); renderLibrary(); });
   }
@@ -66,21 +67,24 @@
   const byTier = streams => [streams.filter(s => s.tier !== "appendix"), streams.filter(s => s.tier === "appendix")];
   const projCount = p => p.schema !== 2 ? `흐름 ${p.streams.length}개` : p.mode === "one_line" ? "한 줄" : p.mode === "daily_list" ? "작업 단위 목록" : `정리 단위 ${p.streams.length}개`;
   function libBlockHtml(b, used) {
-    const body = b.type === "image" ? `<div class="lbl">${esc(b.caption)}</div><img src="/files/${b.src}" alt="">`
+    const body = b.type === "image" ? `<div class="lbl">${esc(b.caption)}</div><img src="/files/${esc(b.src)}" alt="">`
       : b.type === "file" ? `<div class="txt">${esc(b.caption)}</div><div class="meta">${esc(b.src.split("/").pop())} · ${fmtSize(b.size)}</div>`
       : b.type === "page" ? `<div class="txt">${esc(b.caption)}</div><div class="meta">결과 페이지 (로컬)</div>`
       : b.type === "markdown" ? `<div class="lbl">${esc(b.caption)}</div><div class="txt">${esc((b.text || "").slice(0, 200))}</div>`
       : `${b.label ? `<div class="lbl">${esc(b.label)}</div>` : ""}<div class="txt">${esc(b.text)}</div>`;
-    const action = b.type === "page" ? `<button class="open" data-view="${b.src}" data-title="${esc(b.caption)}">열기</button>` : used ? `<span class="badge">사용됨</span>` : `<button class="open" data-add="${b.id}">＋</button>`;
+    const action = b.type === "page" ? `<button class="open" data-view="${esc(b.src)}" data-title="${esc(b.caption)}">열기</button>` : used ? `<span class="badge">사용됨</span>` : `<button class="open" data-add="${esc(b.id)}">＋</button>`;
     const opt = b.optional ? ` title="초안에 기본으로 넣지 않는 조각입니다 (흐름 전체 추가에서 빠짐)"` : "";
-    return `<div class="lib-block ${used ? "used" : ""} ${b.optional ? "optional" : ""}"${opt} draggable="${b.type !== "page"}" data-id="${b.id}"><span class="icon">${icon(b)}</span><div class="body">${body}</div>${action}</div>`;
+    return `<div class="lib-block ${used ? "used" : ""} ${b.optional ? "optional" : ""}"${opt} draggable="${b.type !== "page"}" data-id="${esc(b.id)}"><span class="icon">${icon(b)}</span><div class="body">${body}</div>${action}</div>`;
   }
   const openStreams = new Set();   // which stream <details> the user has expanded; survives re-renders
   const folds = new Set(JSON.parse(localStorage.getItem("cp.folds") || "[]"));   // collapsed projects/streams, remembered
   const saveFolds = () => { try { localStorage.setItem("cp.folds", JSON.stringify([...folds])); } catch {} };
   const foldable = (key, cls, summary, body) => `<details class="${cls}" data-fold="${esc(key)}" ${folds.has(key) ? "" : "open"}><summary>${summary}</summary>${body}</details>`;
   function wireFolds(root) {
-    $$("details[data-fold]", root).forEach(d => d.ontoggle = () => { d.open ? folds.delete(d.dataset.fold) : folds.add(d.dataset.fold); saveFolds(); });
+    $$("details[data-fold]", root).forEach(d => d.ontoggle = () => {
+      const shown = d.dataset.inverse ? !d.open : d.open;   // inverse folds start closed and remember being opened
+      shown ? folds.delete(d.dataset.fold) : folds.add(d.dataset.fold); saveFolds();
+    });
     $$("details[data-stream-id]", root).forEach(d => d.ontoggle = () => { d.open ? openStreams.add(d.dataset.streamId) : openStreams.delete(d.dataset.streamId); });
   }
   function renderLibrary() {
@@ -95,8 +99,8 @@
     const streamHtml = s => {
       const blocks = s.blocks.filter(matches);
       if (!blocks.length) return "";
-      return `<details data-stream-id="${esc(s.id)}" ${openStreams.has(s.id) ? "open" : ""}><summary><span>${esc(s.title)}</span><span class="st">${s.chapter ? chapterBadges(s) : esc(s.status)}</span>
-          <button class="addAll" data-stream="${s.id}">전체 추가</button></summary>${blocks.map(b => libBlockHtml(b, used.has(b.id))).join("")}</details>`;
+      return `<details class="${s.value === "생략" ? "skip" : ""}" data-stream-id="${esc(s.id)}" ${openStreams.has(s.id) ? "open" : ""}><summary><span>${esc(s.title)}</span><span class="st">${s.chapter ? chapterBadges(s) : esc(s.status)}</span>
+          <button class="addAll" data-stream="${esc(s.id)}">전체 추가</button></summary>${blocks.map(b => libBlockHtml(b, used.has(b.id))).join("")}</details>`;
     };
     for (const p of w.projects) {
       if (p.schema === 2) {
@@ -104,7 +108,10 @@
         const apx = appendix.map(streamHtml).join("");
         let body = main.map(streamHtml).join("") + (apx ? `<div class="tierHead">부록</div>${apx}` : "");
         const q = state.query.toLowerCase();
-        if (p.mode === "one_line" && p.one_line && (!q || p.one_line.toLowerCase().includes(q))) body = `<p class="oneLine">${esc(p.one_line)}</p>`;
+        const own = (p.blocks || []).filter(matches).map(b => libBlockHtml(b, used.has(b.id))).join("");
+        if (p.mode === "one_line") body = own;
+        else body = own + body;
+        if (p.error) body = `<p class="err">이 프로젝트를 읽지 못했습니다: ${esc(p.error)}</p>` + body;
         if (body) parts.push(foldable(`lib:${w.week}:${p.short}`, "proj", `<h3>${esc(p.short)} <span class="n">${projCount(p)}</span></h3>`, body));
         continue;
       }
@@ -148,16 +155,16 @@
     const used = usedRefs();
     const el = $("#reader");
     if (!w) { el.innerHTML = `<p class="muted">주차를 고르세요.</p>`; return; }
-    const plus = b => `<button class="plus" data-add="${b.id}" title="초안에 추가">${used.has(b.id) ? "사용됨" : "＋"}</button>`;
-    const elm = (b, inner, cls = "") => `<div class="el ${used.has(b.id) ? "used" : ""} ${cls}" data-id="${b.id}">${inner}${plus(b)}</div>`;
-    const chipsHtml = (pages, files) => (files.length || pages.length) ? `<div class="files">${pages.map(pg => `<button class="chip" data-view="${pg.src}" data-title="${esc(pg.caption)}">🌐 ${esc(pg.caption)} 열어서 집어오기</button>`).join("")}${files.map(f => `<button class="chip" data-add="${f.id}" title="첨부로 추가">📎 ${esc(f.src.split("/").pop())} · ${fmtSize(f.size)}${used.has(f.id) ? " ✓" : " ＋"}</button>`).join("")}</div>` : "";
+    const plus = b => `<button class="plus" data-add="${esc(b.id)}" title="초안에 추가">${used.has(b.id) ? "사용됨" : "＋"}</button>`;
+    const elm = (b, inner, cls = "") => `<div class="el ${used.has(b.id) ? "used" : ""} ${cls}" data-id="${esc(b.id)}">${inner}${plus(b)}</div>`;
+    const chipsHtml = (pages, files) => (files.length || pages.length) ? `<div class="files">${pages.map(pg => `<button class="chip" data-view="${esc(pg.src)}" data-title="${esc(pg.caption)}">🌐 ${esc(pg.caption)} 열어서 집어오기</button>`).join("")}${files.map(f => `<button class="chip" data-add="${esc(f.id)}" title="첨부로 추가">📎 ${esc(f.src.split("/").pop())} · ${fmtSize(f.size)}${used.has(f.id) ? " ✓" : " ＋"}</button>`).join("")}</div>` : "";
     const mediaHtml = files => files.map(f => {
       const ext = f.src.split(".").pop().toLowerCase();
       const tag = ["mp4", "webm", "mov"].includes(ext) ? "video" : ["mp3", "wav", "ogg", "m4a"].includes(ext) ? "audio" : null;
-      return tag ? `<div class="media"><${tag} controls preload="metadata" src="/files/${f.src}"></${tag}><div class="cap">${esc(f.caption)} <button class="chip" data-add="${f.id}">${used.has(f.id) ? "첨부됨 ✓" : "첨부로 추가 ＋"}</button></div></div>` : "";
+      return tag ? `<div class="media"><${tag} controls preload="metadata" src="/files/${esc(f.src)}"></${tag}><div class="cap">${esc(f.caption)} <button class="chip" data-add="${esc(f.id)}">${used.has(f.id) ? "첨부됨 ✓" : "첨부로 추가 ＋"}</button></div></div>` : "";
     }).join("");
-    const mdFullHtml = m => `<details class="md"><summary>md 전문 (${esc(m.caption)}) <button class="chip" data-add="${m.id}">전체 ＋</button></summary><pre>${esc(m.text)}</pre></details>`;
-    const fig = i => elm(i, `<figure><img src="/files/${i.src}" alt=""><figcaption>${esc(i.caption)}</figcaption></figure>`, "fig");
+    const mdFullHtml = m => `<details class="md"><summary>md 전문 (${esc(m.caption)}) <button class="chip" data-add="${esc(m.id)}">전체 ＋</button></summary><pre>${esc(m.text)}</pre></details>`;
+    const fig = i => elm(i, `<figure><img src="/files/${esc(i.src)}" alt=""><figcaption>${esc(i.caption)}</figcaption></figure>`, "fig");
     // v2: one chapter (정리 단위) — lead, sentences, results, then the change line and the units folded as 근거
     const chapterHtml = s => {
       const by = { heading: null, lead: null, change: null, units: null, bullets: [], images: [], pages: [], files: [], texts: [], mds: [] };
@@ -182,18 +189,28 @@
       if (by.change) html.push(elm(by.change, `<p class="change">${esc(by.change.label)} · ${esc(by.change.text)}</p>`, "opt"));
       if (by.units) html.push(`<details class="units"><summary>근거</summary>${elm(by.units, `<p class="ulines">${esc(by.units.text)}</p>`, "opt")}</details>`);
       for (const m of by.mds) html.push(mdFullHtml(m));
-      const title = by.heading ? `<span class="el inl" data-id="${by.heading.id}">${esc(s.title)}</span>` : esc(s.title);
+      const title = by.heading ? `<span class="el inl" data-id="${esc(by.heading.id)}">${esc(s.title)}</span>` : esc(s.title);
       const head = `<h4>${title}${chapterBadges(s)}</h4><button class="addAll" data-stream="${esc(s.id)}">흐름 전체 추가</button>`;
-      return `<details class="stream" data-stream="${esc(s.id)}" data-fold="${esc(s.id)}" ${folds.has(s.id) ? "" : "open"}><summary>${head}</summary><div class="body">${html.join("")}</div></details>`;
+      const skip = s.value === "생략";
+      const fold = skip ? `skip:${s.id}` : s.id;
+      const open = skip ? folds.has(fold) : !folds.has(fold);   // a 생략 chapter's key means "opened"
+      return `<details class="stream ${skip ? "skip" : ""}" data-stream="${esc(s.id)}" data-fold="${esc(fold)}" ${skip ? 'data-inverse="1"' : ""} ${open ? "open" : ""}><summary>${head}</summary><div class="body">${html.join("")}</div></details>`;
     };
     const v2ProjectHtml = p => {
       const [main, appendix] = byTier(p.streams);
-      const body = p.mode === "one_line" ? `<p class="oneLine">${esc(p.one_line || "")}</p>`
-        : (p.overview ? `<p class="overview">${esc(p.overview)}</p>` : "") + main.map(chapterHtml).join("") +
-          (appendix.length ? `<div class="tierHead">부록</div>${appendix.map(chapterHtml).join("")}` : "");
+      const own = role => (p.blocks || []).filter(b => b.role === role).map(b => elm(b, `<p class="${role === "one_line" ? "oneLine" : "overview"}">${esc(b.text)}</p>`)).join("");
+      const err = p.error ? `<p class="err">이 프로젝트를 읽지 못했습니다: ${esc(p.error)}</p>` : "";
+      const copies = (p.blocks || []).filter(b => !b.role);      // packaged results no chapter cites
+      const copiesHtml = copies.filter(b => b.type === "image").map(fig).join("") +
+        chipsHtml(copies.filter(b => b.type === "page"), copies.filter(b => b.type === "file")) + mediaHtml(copies.filter(b => b.type === "file"));
+      const loose = p.mode !== "one_line" && copies.length ? `<div class="tierHead">정리 단위 밖 결과물</div>${copiesHtml}` : "";
+      const body = err + (p.mode === "one_line" ? own("one_line") + copiesHtml
+        : own("overview") + main.map(chapterHtml).join("") +
+          (appendix.length ? `<div class="tierHead">부록</div>${appendix.map(chapterHtml).join("")}` : "") + loose);
       return foldable(`rd:${w.week}:${p.short}`, "proj", `<h3>${esc(p.short)}</h3><span class="n">${projCount(p)}</span>`, body);
     };
     const parts = [`<div class="wk">${esc(w.week)} · ${esc(w.since || "")} ~ ${esc(w.until || "")}</div>`];
+    if (w.warning) parts.push(`<p class="err">${esc(w.warning)}</p>`);
     for (const p of w.projects) {
       if (p.schema === 2) { parts.push(v2ProjectHtml(p)); continue; }
       const streamsHtml = [];
@@ -210,7 +227,7 @@
         }
         const shown = new Set();
         const figs = ns => by.images.filter(i => ns.includes(i.evidence_n) && !shown.has(i.id)).map(i => { shown.add(i.id);
-          return elm(i, `<figure><img src="/files/${i.src}" alt=""><figcaption>${esc(i.caption)}</figcaption></figure>`, "fig"); }).join("");
+          return elm(i, `<figure><img src="/files/${esc(i.src)}" alt=""><figcaption>${esc(i.caption)}</figcaption></figure>`, "fig"); }).join("");
         const html = [];
         if (by.heading) html.push(elm(by.heading, `<p class="muted small">제목 블록: ${esc(s.title)}</p>`));
         for (const b of by.paras) html.push(elm(b, `<p><span class="lbl">${esc(b.label)}</span>${esc(b.text)}</p>`));
@@ -219,18 +236,18 @@
           for (const b of by.bullets) { html.push(elm(b, `<ul class="res"><li>${esc(b.text)}</li></ul>`)); html.push(figs(b.evidence || [])); }
         }
         const rest = by.images.filter(i => !shown.has(i.id));
-        if (rest.length) html.push(rest.map(i => elm(i, `<figure><img src="/files/${i.src}" alt=""><figcaption>${esc(i.caption)}</figcaption></figure>`, "fig")).join(""));
+        if (rest.length) html.push(rest.map(i => elm(i, `<figure><img src="/files/${esc(i.src)}" alt=""><figcaption>${esc(i.caption)}</figcaption></figure>`, "fig")).join(""));
         for (const b of by.tail) html.push(elm(b, `<p class="status"><span class="lbl">${esc(b.label)}</span>${esc(b.text)}</p>`));
         html.push(chipsHtml(by.pages, by.files), mediaHtml(by.files));
         for (const m of by.mds) html.push(mdFullHtml(m));
-        const head = `<h4>${by.heading ? `<span class="el inl" data-id="${by.heading.id}">${esc(s.title)}</span>` : esc(s.title)}</h4><button class="addAll" data-stream="${esc(s.id)}">흐름 전체 추가</button>`;
+        const head = `<h4>${by.heading ? `<span class="el inl" data-id="${esc(by.heading.id)}">${esc(s.title)}</span>` : esc(s.title)}</h4><button class="addAll" data-stream="${esc(s.id)}">흐름 전체 추가</button>`;
         streamsHtml.push(`<details class="stream" data-stream="${esc(s.id)}" data-fold="${esc(s.id)}" ${folds.has(s.id) ? "" : "open"}><summary>${head}</summary><div class="body">${html.join("")}</div></details>`);
       }
       parts.push(foldable(`rd:${w.week}:${p.short}`, "proj", `<h3>${esc(p.short)}</h3><span class="n">흐름 ${p.streams.length}개</span>`, streamsHtml.join("")));
     }
     const weekly = (w.assets || []).find(a => a.src.endsWith("weekly.md"));
     const weeklyLabel = w.schema === 2 ? "주간 개요" : "주간 방향 보고";
-    if (weekly) parts.push(foldable(`rd:${w.week}:weekly`, "proj", `<h3>${weeklyLabel}</h3>`, `<article class="weekly" data-stream="${esc(weekly.id)}"><h4><span>${weeklyLabel}</span> <button class="addAll" data-add="${weekly.id}">전체 추가</button></h4><div class="el" data-id="${weekly.id}">${mdToHtml(weekly.text)}</div></article>`));
+    if (weekly) parts.push(foldable(`rd:${w.week}:weekly`, "proj", `<h3>${weeklyLabel}</h3>`, `<article class="weekly" data-stream="${esc(weekly.id)}"><h4><span>${weeklyLabel}</span> <button class="addAll" data-add="${esc(weekly.id)}">전체 추가</button></h4><div class="el" data-id="${esc(weekly.id)}">${mdToHtml(weekly.text)}</div></article>`));
     const readme = (w.assets || []).find(a => a.src.endsWith("README.md"));
     if (readme) parts.push(`<details class="md"><summary>패키지 README</summary><pre>${esc(readme.text)}</pre></details>`);
     el.innerHTML = parts.join("");
@@ -265,7 +282,7 @@
     pvSrc = src; lastPick = [];
     pvReturn = { tab: $(".midTabs button[data-mid].active")?.dataset.mid || "reader", scroll: $(".col.mid").scrollTop };
     $("#pvTitle").textContent = title || src.split("/").slice(-2, -1)[0]; $("#pvTitle").title = title || "";
-    $("#pvFrame").src = `/page/${src}`;
+    $("#pvFrame").src = `${state.pageOrigin}/page/${src}`;   // pages run on their own origin, away from the API
     $(".col.mid").classList.add("viewing"); $(".cols").classList.add("viewing"); $("#pageView").hidden = false;
     $(".midTabs").hidden = true; $(".midHint").hidden = true; $("#reader").hidden = true; $("#library").hidden = true;
     renderPickCount();
@@ -278,7 +295,7 @@
     requestAnimationFrame(() => { $(".col.mid").scrollTop = pvReturn?.scroll || 0; });
   }
   $("#pvBack").onclick = closePageViewer;
-  $("#pvNewWin").onclick = () => { if (!pvSrc) return; window.open(`/page/${pvSrc}`, `cp-${pvSrc}`, "popup,width=1100,height=900"); toast("새 창에서 클릭해도 이 초안에 담깁니다.", 3000); };
+  $("#pvNewWin").onclick = () => { if (!pvSrc) return; const w = window.open(`${state.pageOrigin}/page/${pvSrc}`, `cp-${pvSrc}`, "popup,width=1100,height=900"); if (w) pvWins.set(w, pvSrc); toast("새 창에서 클릭해도 이 초안에 담깁니다.", 3000); };
   $("#pvUndo").onclick = () => {
     if (!lastPick.length) return;
     const ids = new Set(lastPick); state.draft.blocks = state.draft.blocks.filter(b => !ids.has(b.id)); lastPick = [];
@@ -290,7 +307,15 @@
   }
   document.addEventListener("keydown", e => { if (e.key === "Escape" && pvSrc && !$("#publishDlg").open) closePageViewer(); });
 
-  const localSrc = u => (u && u.includes("/files/")) ? decodeURIComponent(u.split("/files/")[1]) : null;
+  // a pick names files by URL; only a plain path inside the week of the page being shown is accepted
+  let localWeek = null;
+  const pvWins = new Map();   // popups the viewer opened -> the page each one shows; no other window's picks count
+  const localSrc = u => {
+    if (!u || !u.includes("/files/")) return null;
+    let p; try { p = decodeURIComponent(u.split("/files/")[1].split(/[?#]/)[0]); } catch { return null; }
+    if (!localWeek || !p.startsWith(`${localWeek}/`) || p.includes("\\") || p.split("/").includes("..")) return null;
+    return p;
+  };
   async function blockFor(m, week) {
     switch (m.t) {
       case "image": {
@@ -314,9 +339,12 @@
     }
   }
   window.addEventListener("message", async e => {
-    const m = e.data; if (!m || m.kind !== "cp-pick") return;
-    const src = m.page?.startsWith("/page/") ? decodeURIComponent(m.page.slice(6)) : pvSrc; if (!src || !state.draft) return;
+    if (e.origin !== state.pageOrigin) return;            // picks come only from result pages
+    // ...and only from the viewer frame (the page it shows now) or a popup it opened (the page that popup got)
+    const src = e.source === $("#pvFrame").contentWindow ? pvSrc : pvWins.get(e.source);
+    const m = e.data; if (!m || m.kind !== "cp-pick" || !src || !state.draft) return;
     const week = src.split("/")[0], ref = `page:${src}`;
+    localWeek = week;
     try {
       const made = [];
       for (const it of m.items || []) { const b = await blockFor(it, week); if (b) made.push({ ...b, id: uid(), source_ref: ref }); }
@@ -331,7 +359,10 @@
   function findLib(id) {
     for (const w of state.library) {
       for (const a of w.assets || []) if (a.id === id) return a;
-      for (const p of w.projects) for (const s of p.streams) for (const b of s.blocks) if (b.id === id) return b;
+      for (const p of w.projects) {
+        for (const b of p.blocks || []) if (b.id === id) return b;
+        for (const s of p.streams) for (const b of s.blocks) if (b.id === id) return b;
+      }
     }
     return null;
   }
@@ -384,7 +415,7 @@
 
   // ---------- drafts ----------
   function renderDraftSelect() {
-    $("#draftSelect").innerHTML = state.drafts.map(d => `<option value="${d.id}" ${d.id === state.draft?.id ? "selected" : ""}>${esc(d.title)}${d.confluence?.page_id ? " ↑" : ""}</option>`).join("");
+    $("#draftSelect").innerHTML = state.drafts.map(d => `<option value="${esc(d.id)}" ${d.id === state.draft?.id ? "selected" : ""}>${esc(d.title)}${d.confluence?.page_id ? " ↑" : ""}</option>`).join("");
   }
   async function refreshDrafts() { state.drafts = await api("/api/drafts"); renderDraftSelect(); }
   async function openDraft(id) {
@@ -413,7 +444,7 @@
       case "heading": return `<div contenteditable="true" data-field="text" data-ph="제목">${esc(b.text)}</div>`;
       case "paragraph": return `<div contenteditable="true" data-field="text" data-ph="문단을 입력하세요 (**굵게**, _기울임_, [링크](주소))">${esc(b.text)}</div>`;
       case "bullets": return `<ul class="items">${(b.items || [""]).map((it, i) => `<li contenteditable="true" data-item="${i}" data-ph="항목">${esc(it)}</li>`).join("")}</ul>`;
-      case "image": return `<div class="figure"><img src="/files/${b.src}" alt=""><input class="caption" data-field="caption" placeholder="캡션" value="${esc(b.caption)}"></div>`;
+      case "image": return `<div class="figure"><img src="/files/${esc(b.src)}" alt=""><input class="caption" data-field="caption" placeholder="캡션" value="${esc(b.caption)}"></div>`;
       case "file": return `<div class="filebox"><span>📎</span><div style="flex:1"><input class="caption" data-field="caption" placeholder="설명" value="${esc(b.caption)}"><div class="name">${esc(b.src.split("/").pop())}</div></div></div>`;
       case "divider": return `<hr>`;
       case "callout": return `<div class="callout" contenteditable="true" data-field="text" data-ph="강조할 내용">${esc(b.text)}</div>`;
@@ -430,7 +461,7 @@
       case "paragraph": return `<div contenteditable="true" data-path="${path},text">${esc(nb.text)}</div>`;
       case "callout": return `<div class="callout" contenteditable="true" data-path="${path},text">${esc(nb.text)}</div>`;
       case "bullets": return `<ul class="items">${(nb.items || []).map((it, i) => `<li contenteditable="true" data-path="${path},items,${i}">${esc(it)}</li>`).join("")}</ul>`;
-      case "image": return `<div class="figure"><img src="/files/${nb.src}" alt=""><input class="caption" data-path="${path},caption" placeholder="캡션" value="${esc(nb.caption)}"></div>`;
+      case "image": return `<div class="figure"><img src="/files/${esc(nb.src)}" alt=""><input class="caption" data-path="${path},caption" placeholder="캡션" value="${esc(nb.caption)}"></div>`;
       case "file": return `<div class="filebox"><span>📎</span><div class="name">${esc(nb.caption || (nb.src || "").split("/").pop())}</div></div>`;
       case "table": return `<table class="tbl">${(nb.rows || []).map(r => `<tr>${r.map(x => `<td>${esc(x)}</td>`).join("")}</tr>`).join("")}</table>`;
       case "divider": return `<hr>`;
@@ -573,7 +604,7 @@
         case "heading": return `<h${b.level === 3 ? 3 : 2}>${inlineHtml(b.text)}</h${b.level === 3 ? 3 : 2}>`;
         case "paragraph": return `<p>${inlineHtml(b.text)}</p>`;
         case "bullets": return `<ul>${(b.items || []).map(i => `<li>${inlineHtml(i)}</li>`).join("")}</ul>`;
-        case "image": return `<p><img src="/files/${b.src}" alt=""></p>${b.caption ? `<p><em>${esc(b.caption)}</em></p>` : ""}`;
+        case "image": return `<p><img src="/files/${esc(b.src)}" alt=""></p>${b.caption ? `<p><em>${esc(b.caption)}</em></p>` : ""}`;
         case "file": return `<p><span class="att">📎 ${esc(b.caption || b.src)}</span></p>`;
         case "divider": return `<hr>`;
         case "callout": return `<div class="info">${inlineHtml(b.text)}</div>`;
@@ -627,7 +658,7 @@
   $("#publishBtn").onclick = openPublish;
   $("#copyHtml").onclick = async () => {
     try {
-      const r = await api(`/api/paste/${state.draft.id}`);
+      const r = await api(`/api/paste/${state.draft.id}`, { method: "POST", body: {} });
       const html = r.html.replace(/<div class="how"[\s\S]*?<\/div><hr>/, "");   // drop the instruction box from the copy
       const text = state.draft.blocks.map(b => b.text || (b.items || []).join("\n") || b.caption || "").join("\n\n");
       await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) })]);

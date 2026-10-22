@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -32,6 +33,9 @@ class Config:
     inbox_dir: Path = field(default_factory=lambda: Path.home() / "Downloads" / "report-inbox")
     workspace_dir: Path = field(default_factory=lambda: Path.home() / "report-composer")
     port: int = DEFAULT_PORT
+    # result pages are served from this host name and the UI from 127.0.0.1: two origins, so a page's scripts
+    # cannot call the composer's API (drafts, Confluence publishing)
+    page_host: str = "localhost"
     confluence: ConfluenceConfig = field(default_factory=ConfluenceConfig)
     path: Path | None = None
 
@@ -44,6 +48,16 @@ class Config:
         return d
 
 
+def page_host(value: str) -> str:
+    """A host name for result pages that differs from the UI's 127.0.0.1: an IP address, a port or the UI host
+    itself would put pages back in the UI's origin, so those fall back to localhost."""
+    v = value.strip().lower()
+    if not v or ":" in v or "[" in v or re.fullmatch(r"[\d.]+", v) or not re.fullmatch(r"[a-z0-9.-]+", v):
+        print(f"page_host {value!r} is not a host name apart from 127.0.0.1; using localhost")
+        return "localhost"
+    return v
+
+
 def load_config(path: Path | None) -> Config:
     cfg = Config(path=Path(path) if path else None)
     if path and Path(path).exists():
@@ -54,6 +68,8 @@ def load_config(path: Path | None) -> Config:
             cfg.workspace_dir = Path(raw["workspace_dir"]).expanduser()
         if raw.get("port"):
             cfg.port = int(raw["port"])
+        if raw.get("page_host"):
+            cfg.page_host = page_host(str(raw["page_host"]))
         c = raw.get("confluence") or {}
         cfg.confluence = ConfluenceConfig(
             base_url=str(c.get("base_url") or "").rstrip("/"),

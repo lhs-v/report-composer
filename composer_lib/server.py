@@ -33,7 +33,7 @@ from .drafts import Drafts
 from .inbox import process_once, scan
 from .library import build_library
 from .pastehtml import paste_html, readme_text
-from .storage import attachment_name, attachments_for, render, validate
+from .storage import attachment_name, attachments_for, package_file, render, validate
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
@@ -72,8 +72,8 @@ class App:
         folder.mkdir(parents=True)
         copied = []
         for name, src in attachments_for(draft.get("blocks") or []).items():
-            fp = self.weeks_dir / src
-            if fp.is_file():
+            fp = package_file(self.weeks_dir, src)
+            if fp:
                 shutil.copy2(fp, folder / name)
                 copied.append(name)
         (folder / "body.html").write_text(render(draft.get("blocks") or []), encoding="utf-8")
@@ -177,6 +177,35 @@ def make_handler(app: App):
                 self._json(400, {"error": "invalid JSON"})
                 return None
 
+        # ----- origins -----
+        # The UI and its API live on 127.0.0.1; result pages (agent-made HTML that arrived by mail) only on the page
+        # host. Two origins: a page's scripts cannot read or call the API, and the picker reaches the UI by message.
+        def _origins(self) -> tuple[str, str]:
+            port = self.server.server_address[1]
+            return f"127.0.0.1:{port}", f"{app.cfg.page_host}:{port}"
+
+        def _guard(self, path: str) -> bool:
+            """False (and the response already sent) when the request may not go on."""
+            ui, page = self._origins()
+            host = self.headers.get("Host", "")
+            if host not in (ui, page):
+                self._send(403, "unknown host", "text/plain")
+                return False
+            if path.startswith("/page/") and host != page:
+                self._send(302, "", "text/plain", {"Location": f"http://{page}{self.path}"})
+                return False
+            if path == "/" and host != ui:
+                self._send(302, "", "text/plain", {"Location": f"http://{ui}/"})
+                return False
+            if path.startswith("/api/") and host != ui:
+                self._send(403, "the API answers the composer window only", "text/plain")
+                return False
+            origin = self.headers.get("Origin")
+            if self.command not in ("GET", "HEAD") and origin is not None and origin != f"http://{ui}":
+                self._send(403, "cross-origin write refused", "text/plain")
+                return False
+            return True
+
         def _file(self, path: Path) -> None:
             self._send(200, path.read_bytes(), mimetypes.guess_type(str(path))[0] or "application/octet-stream")
 
@@ -184,6 +213,8 @@ def make_handler(app: App):
         def do_GET(self):
             url = urllib.parse.urlsplit(self.path)
             p, q = url.path, urllib.parse.parse_qs(url.query)
+            if not self._guard(p):
+                return
             if p == "/":
                 f = STATIC_DIR / "index.html"
                 return self._file(f) if f.exists() else self._send(200, "<title>composer</title><p>static/index.html missing</p>")
@@ -192,7 +223,15 @@ def make_handler(app: App):
                 return self._file(f) if f else self._send(404, "not found", "text/plain")
             if p.startswith("/files/"):
                 f = _safe_child(app.weeks_dir, p[len("/files/"):])
-                return self._file(f) if f else self._send(404, "not found", "text/plain")
+                if not f:
+                    return self._send(404, "not found", "text/plain")
+                if f.suffix.lower() in (".html", ".htm") and self.headers.get("Host") == self._origins()[1]:
+                    # a link between result pages: open the next page the same way, with its head and the picker
+                    return self._send(302, "", "text/plain", {"Location": f"http://{self._origins()[1]}/page/{p[len('/files/'):]}"})
+                # raw package files are media for pages and the UI; opened as a document (an .html copy, an svg)
+                # they get no scripts and no origin, so nothing in them runs as the composer window
+                return self._send(200, f.read_bytes(), mimetypes.guess_type(str(f))[0] or "application/octet-stream",
+                                  {"Content-Security-Policy": "sandbox"})
             if p.startswith("/page/"):
                 rel = p[len("/page/"):]
                 f = _safe_child(app.weeks_dir, rel)
@@ -200,7 +239,7 @@ def make_handler(app: App):
                     return self._send(404, "not found", "text/plain")
                 return self._send(200, wrap_page(f.read_text(encoding="utf-8", errors="replace"), "/files/" + urllib.parse.unquote(rel).rsplit("/", 1)[0] + "/"))
             if p == "/api/state":
-                return self._json(200, app.state())
+                return self._json(200, {**app.state(), "page_origin": f"http://{self._origins()[1]}"})
             if p == "/api/library":
                 return self._json(200, build_library(app.weeks_dir))
             if p == "/api/drafts":
@@ -240,6 +279,8 @@ def make_handler(app: App):
         # ----- POST / PUT / DELETE -----
         def do_POST(self):
             p = urllib.parse.urlsplit(self.path).path
+            if not self._guard(p):
+                return
             body = self._body()
             if body is None:
                 return
@@ -308,6 +349,8 @@ def make_handler(app: App):
             return self._send(404, "not found", "text/plain")
 
         def do_PUT(self):
+            if not self._guard(urllib.parse.urlsplit(self.path).path):
+                return
             m = re.fullmatch(r"/api/drafts/(d-[0-9a-f]+)", urllib.parse.urlsplit(self.path).path)
             if not m:
                 return self._send(404, "not found", "text/plain")
@@ -321,6 +364,8 @@ def make_handler(app: App):
                 return self._json(400, {"error": str(e)})
 
         def do_DELETE(self):
+            if not self._guard(urllib.parse.urlsplit(self.path).path):
+                return
             m = re.fullmatch(r"/api/drafts/(d-[0-9a-f]+)", urllib.parse.urlsplit(self.path).path)
             if not m:
                 return self._send(404, "not found", "text/plain")

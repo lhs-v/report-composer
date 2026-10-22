@@ -119,7 +119,7 @@ class ConfluenceClientTests(unittest.TestCase):
 
     def test_cloud_uses_basic_auth_with_email_when_email_is_configured(self):
         import base64
-        cfg = ConfluenceConfig(base_url="https://corp.atlassian.net/wiki", pat="apitoken", email="me@corp.com", default_space="SODA")
+        cfg = ConfluenceConfig(base_url="https://corp.atlassian.net/wiki", pat="apitoken", email="me@corp.com", default_space="TEAM")
         t = FakeTransport()
         ConfluenceClient(cfg, transport=t).spaces()
         expected = "Basic " + base64.b64encode(b"me@corp.com:apitoken").decode()

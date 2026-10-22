@@ -11,7 +11,7 @@ import mimetypes
 from html import escape
 from pathlib import Path
 
-from .storage import attachment_name
+from .storage import attachment_name, package_file
 
 MAX_INLINE = 2 * 1024 * 1024
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp")
@@ -53,7 +53,8 @@ def render_blocks(blocks: list[dict], weeks_dir: Path, manual: list[str]) -> lis
             items = b.get("items") or []
             body.append("<ul>" + "".join(f"<li>{inline_html(i)}</li>" for i in items) + "</ul>")
         elif t == "image":
-            uri = data_uri(weeks_dir / b.get("src", ""))
+            fp = package_file(weeks_dir, b.get("src"))
+            uri = data_uri(fp) if fp else None
             name = attachment_name(b.get("src", ""))
             if uri:
                 body.append(f'<p><img src="{uri}" alt="{escape(b.get("caption") or name)}" style="max-width:100%"></p>')

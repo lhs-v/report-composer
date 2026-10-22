@@ -6,6 +6,7 @@ XML-escaped first, so page text can never break the markup.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape, quoteattr
 
@@ -85,6 +86,23 @@ def validate(xhtml: str) -> str | None:
         return None
     except ET.ParseError as e:
         return str(e)
+
+
+def package_file(weeks_dir: Path, src) -> Path | None:
+    """The file a block's src names, only if it is a relative path inside the weeks folder and exists. A draft
+    is edited in the browser (and fed by picks from result pages), so its src values are never trusted."""
+    if not isinstance(src, str) or not src or "\x00" in src:
+        return None
+    norm = src.replace("\\", "/")
+    if norm.startswith("/") or re.match(r"^[A-Za-z]:", norm) or ".." in norm.split("/"):
+        return None
+    base = Path(weeks_dir).resolve()
+    target = (base / norm).resolve()
+    try:
+        target.relative_to(base)
+    except ValueError:
+        return None
+    return target if target.is_file() else None
 
 
 def attachments_for(blocks: list[dict]) -> dict[str, str]:
