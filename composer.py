@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from composer_lib import __version__  # noqa: E402
 from composer_lib.config import load_config  # noqa: E402
 from composer_lib.server import make_server, start_inbox_thread  # noqa: E402
 
@@ -33,7 +34,7 @@ def main(argv=None) -> int:
     httpd = make_server("127.0.0.1", cfg.port, cfg)
     start_inbox_thread(httpd.app)
     url = f"http://127.0.0.1:{httpd.server_address[1]}/"
-    print(f"composer: {url}", flush=True)
+    print(f"composer {__version__}: {url}", flush=True)
     print(f"  받은편지함: {cfg.inbox_dir}  (메일에서 받은 zip을 여기에 넣으세요)", flush=True)
     print(f"  작업 폴더:  {cfg.workspace_dir}", flush=True)
     print(f"  Confluence: {'설정됨' if cfg.confluence.configured else '미설정 (composer.config.json)'}", flush=True)

@@ -143,5 +143,54 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(status, 415)
 
 
+class ServerV2Tests(unittest.TestCase):
+    """A v2 (chapters) package next to a v1 one: /api/library carries chapter metadata."""
+
+    @classmethod
+    def setUpClass(cls):
+        from tests.test_library_v2 import write_v2_package
+        cls.tmp = tempfile.TemporaryDirectory()
+        base = Path(cls.tmp.name)
+        cls.cfg = Config(inbox_dir=base / "inbox", workspace_dir=base / "ws", port=0, confluence=ConfluenceConfig())
+        weeks = cls.cfg.workspace_dir / "weeks"
+        write_v2_package(weeks)
+        (weeks / "2026-W42").mkdir()
+        (weeks / "2026-W42" / "outcomes.json").write_text(json.dumps(OUTCOMES, ensure_ascii=False), encoding="utf-8")
+        cls.cfg.inbox_dir.mkdir()
+        cls.httpd = make_server("127.0.0.1", 0, cls.cfg)
+        cls.port = cls.httpd.server_address[1]
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+        cls.tmp.cleanup()
+
+    def get(self, path):
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}{path}", timeout=5) as resp:
+            return resp.status, resp.read()
+
+    def test_library_returns_chapter_metadata(self):
+        from tests.test_library_v2 import C1, WEEK
+        status, raw = self.get("/api/library")
+        self.assertEqual(status, 200)
+        lib = {w["week"]: w for w in json.loads(raw)}
+        self.assertEqual((lib[WEEK]["schema"], lib["2026-W42"]["schema"]), (2, 1))
+        alpha = next(p for p in lib[WEEK]["projects"] if p["short"] == "alpha")
+        self.assertEqual((alpha["mode"], alpha["overview"]), ("chapters", "F5 결론과 받아쓰기 도구 정리"))
+        ch = alpha["streams"][0]
+        self.assertEqual(ch["id"], f"{WEEK}:alpha:{C1}")
+        self.assertEqual({k: ch[k] for k in ("kind", "value", "tier", "section")}, {"kind": "결과", "value": "추천", "tier": "main", "section": "결과"})
+        self.assertEqual(ch["lead"], "폰에 올릴 위치별 활동 판단 방법은 아직 없다.")
+        self.assertEqual([b["label"] for b in ch["blocks"] if b.get("optional")], ["지난주 대비", "근거 작업 단위"])
+        gamma = next(p for p in lib[WEEK]["projects"] if p["short"] == "gamma")
+        self.assertEqual((gamma["mode"], gamma["one_line"]), ("one_line", "자잘한 설정만 손봤다."))
+        img = next(b for b in ch["blocks"] if b["type"] == "image")
+        self.assertEqual(self.get(f"/files/{img['src']}"), (200, b"PNG"))
+        page = next(b for b in ch["blocks"] if b["type"] == "page")
+        self.assertEqual(self.get(f"/page/{page['src']}")[0], 200)
+
+
 if __name__ == "__main__":
     unittest.main()

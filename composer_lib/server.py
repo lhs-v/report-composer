@@ -26,6 +26,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from . import __version__
 from .config import Config
 from .confluence import ConfluenceClient, ConfluenceError
 from .drafts import Drafts
@@ -141,7 +142,7 @@ def _safe_child(base: Path, rel: str) -> Path | None:
 
 def make_handler(app: App):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "composer/0.1"
+        server_version = f"composer/{__version__}"
 
         def log_message(self, fmt, *args):
             sys.stdout.write(f"[http] {fmt % args}\n")
