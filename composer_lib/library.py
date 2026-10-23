@@ -170,11 +170,11 @@ def _result_blocks(weeks_dir: Path, week_dir: Path, ev: dict, pos: int, prefix: 
     count, so a result that loses its copy does not shift the ids of the ones after it."""
     pkg = ev.get("package")
     if not isinstance(pkg, dict):
-        return []        # no copy in this package (export "check", commit, or missing)
+        return []        # no copy in this package (a commit, or a copy that was missing)
     title = ev.get("title") or ""
     rmeta = {"eid": ev.get("eid"), "evidence_kind": ev.get("kind"), **meta}
     blocks = []
-    preview = _pkg_file(week_dir, pkg.get("preview"))
+    preview = _pkg_file(week_dir, pkg.get("thumb")) or _pkg_file(week_dir, pkg.get("preview"))   # the first screen when cut
     if preview:
         blocks.append(_asset_block(weeks_dir, preview, f"{prefix}:image:{pos}", caption=title or preview.name, **rmeta))
     href = _pkg_file(week_dir, pkg.get("href"))
@@ -190,7 +190,10 @@ def _result_blocks(weeks_dir: Path, week_dir: Path, ev: dict, pos: int, prefix: 
         f = _pkg_file(week_dir, rel)
         if f and f != preview and f != href:
             kind = "image" if f.suffix.lower() in IMAGE_SUFFIXES else "file"
-            blocks.append(_asset_block(weeks_dir, f, f"{prefix}:{kind}:{pos}-{k}", caption=f"{title} · {f.name}".strip(" ·"), **rmeta))
+            # files a page carries (its audio, figures, video posters): folded under the page, not part of
+            # "흐름 전체 추가"; the page itself is where they are read and picked
+            blocks.append(_asset_block(weeks_dir, f, f"{prefix}:{kind}:{pos}-{k}", caption=f"{title} · {f.name}".strip(" ·"),
+                                       in_page=True, optional=True, **rmeta))
     return blocks
 
 

@@ -226,7 +226,7 @@ class ServerV2Tests(unittest.TestCase):
         self.assertEqual(ch["id"], f"{WEEK}:alpha:{C1}")
         self.assertEqual({k: ch[k] for k in ("kind", "value", "tier", "section")}, {"kind": "결과", "value": "추천", "tier": "main", "section": "결과"})
         self.assertEqual(ch["lead"], "폰에 올릴 위치별 활동 판단 방법은 아직 없다.")
-        self.assertEqual([b["label"] for b in ch["blocks"] if b.get("optional")], ["지난주 대비", "근거 작업 단위"])
+        self.assertEqual([b["label"] for b in ch["blocks"] if b.get("optional") and not b.get("in_page")], ["지난주 대비", "근거 작업 단위"])
         gamma = next(p for p in lib[WEEK]["projects"] if p["short"] == "gamma")
         self.assertEqual((gamma["mode"], gamma["one_line"]), ("one_line", "자잘한 설정만 손봤다."))
         img = next(b for b in ch["blocks"] if b["type"] == "image")

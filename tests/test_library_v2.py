@@ -177,7 +177,7 @@ class LibraryV2Tests(unittest.TestCase):
         self.assertEqual((change["label"], change["text"], change["optional"]), ("지난주 대비", "지난주 가설을 접었다.", True))
         self.assertEqual((units["type"], units["label"], units["optional"]), ("paragraph", "근거 작업 단위", True))
         self.assertEqual(units["text"], "2026-10-13 18:23 · 비교 실험 설계\n2026-10-14 10:10 · 비교 페이지 발행")
-        self.assertEqual(sum(1 for b in blocks if b.get("optional")), 2)
+        self.assertEqual(sum(1 for b in blocks if b.get("optional") and not b.get("in_page")), 2)
         self.assertFalse(any(b.get("optional") for b in self.chapter(C2)["blocks"]))   # empty change, no units
         self.assertNotIn("요약", [b.get("label") for b in self.chapter(C2)["blocks"]])   # empty lead
 
@@ -346,6 +346,21 @@ class ReviewRegressionTests(unittest.TestCase):
                                   "package": {"href": "assets/loose.csv"}})
         _, projects = self.rebuild()
         self.assertTrue(any(b.get("eid") == "E-fLOOSE" for b in projects["alpha"]["blocks"]))
+
+    def test_files_inside_a_page_are_optional_and_marked_as_page_files(self):
+        _, projects = self.rebuild()
+        audio = next(b for b in projects["alpha"]["streams"][0]["blocks"] if b.get("src", "").endswith("audio/a.mp3"))
+        self.assertTrue(audio.get("in_page"))
+        self.assertTrue(audio.get("optional"))
+
+    def test_the_first_screen_thumb_is_the_picture_a_chapter_shows(self):
+        page = self.w / "pages" / "zz-unrelated-name"
+        (page / "preview-top.png").write_bytes(b"PNG-TOP")
+        ev = self.data["projects"]["C--Claude-alpha"]["evidence"][0]
+        ev["package"]["thumb"] = "pages/zz-unrelated-name/preview-top.png"
+        _, projects = self.rebuild()
+        img = next(b for b in projects["alpha"]["streams"][0]["blocks"] if b["type"] == "image")
+        self.assertTrue(img["src"].endswith("preview-top.png"))
 
     def test_a_newer_schema_is_read_as_chapters_with_a_warning(self):
         self.data["schema"] = 3

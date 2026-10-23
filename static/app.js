@@ -100,7 +100,8 @@
       const blocks = s.blocks.filter(matches);
       if (!blocks.length) return "";
       return `<details class="${s.value === "생략" ? "skip" : ""}" data-stream-id="${esc(s.id)}" ${openStreams.has(s.id) ? "open" : ""}><summary><span>${esc(s.title)}</span><span class="st">${s.chapter ? chapterBadges(s) : esc(s.status)}</span>
-          <button class="addAll" data-stream="${esc(s.id)}">전체 추가</button></summary>${blocks.map(b => libBlockHtml(b, used.has(b.id))).join("")}</details>`;
+          <button class="addAll" data-stream="${esc(s.id)}">전체 추가</button></summary>${blocks.filter(b => !b.in_page).map(b => libBlockHtml(b, used.has(b.id))).join("")}${
+          blocks.some(b => b.in_page) ? `<details class="pfiles"><summary>페이지 안 파일 ${blocks.filter(b => b.in_page).length}개</summary>${blocks.filter(b => b.in_page).map(b => libBlockHtml(b, used.has(b.id))).join("")}</details>` : ""}</details>`;
     };
     for (const p of w.projects) {
       if (p.schema === 2) {
@@ -167,9 +168,10 @@
     const fig = i => elm(i, `<figure><img src="/files/${esc(i.src)}" alt=""><figcaption>${esc(i.caption)}</figcaption></figure>`, "fig");
     // v2: one chapter (정리 단위) — lead, sentences, results, then the change line and the units folded as 근거
     const chapterHtml = s => {
-      const by = { heading: null, lead: null, change: null, units: null, bullets: [], images: [], pages: [], files: [], texts: [], mds: [] };
+      const by = { heading: null, lead: null, change: null, units: null, bullets: [], images: [], pages: [], files: [], texts: [], mds: [], inPage: [] };
       for (const b of s.blocks) {
-        if (b.type === "heading") by.heading = b;
+        if (b.in_page) by.inPage.push(b);
+        else if (b.type === "heading") by.heading = b;
         else if (b.type === "paragraph") { if (b.role === "units") by.units = b; else if (b.optional) by.change = b; else by.lead = b; }
         else if (b.type === "bullet") by.bullets.push(b);
         else if (b.type === "image") by.images.push(b);
@@ -181,11 +183,15 @@
       if (by.lead) html.push(elm(by.lead, `<p class="lead">${esc(by.lead.text)}</p>`));
       if (by.bullets.length) html.push(by.bullets.map(b => elm(b, `<ul class="res"><li>${esc(b.text)}</li></ul>`)).join(""));
       html.push(by.images.map(fig).join(""));
-      for (const t of by.texts) {
+      for (const t of by.texts) {           // reply excerpts: folded, they can be long and wander off the topic
         const text = t.text || "", cut = text.length > 600;
-        html.push(elm(t, `<div class="excerpt"><div class="cap">${esc(t.caption)}</div>${mdToHtml(cut ? text.slice(0, 600) + " …" : text)}</div>`));
+        html.push(`<details class="excerptFold"><summary>${esc(t.caption)}</summary>${elm(t, `<div class="excerpt">${mdToHtml(cut ? text.slice(0, 600) + " …" : text)}</div>`)}</details>`);
       }
       html.push(chipsHtml(by.pages, by.files), mediaHtml(by.files));
+      if (by.inPage.length) {               // what a page carries stays folded under it
+        const imgs = by.inPage.filter(b => b.type === "image"), other = by.inPage.filter(b => b.type !== "image");
+        html.push(`<details class="pfiles"><summary>페이지 안 파일 ${by.inPage.length}개</summary>${imgs.map(fig).join("")}${chipsHtml([], other)}${mediaHtml(other)}</details>`);
+      }
       if (by.change) html.push(elm(by.change, `<p class="change">${esc(by.change.label)} · ${esc(by.change.text)}</p>`, "opt"));
       if (by.units) html.push(`<details class="units"><summary>근거</summary>${elm(by.units, `<p class="ulines">${esc(by.units.text)}</p>`, "opt")}</details>`);
       for (const m of by.mds) html.push(mdFullHtml(m));

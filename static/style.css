@@ -1,3 +1,4 @@
+[hidden] { display: none !important; }   /* a display rule must never show what the markup hides */
 :root {
   --bg:#f5f6f4; --panel:#ffffff; --line:#d9ded9; --txt:#1c2320; --sub:#5f6a65; --acc:#0d6b61; --acc-soft:#dfeeea;
   --warn:#b4541f; --err:#b3261e; --ok:#2e7d4f;
@@ -198,3 +199,5 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 .lib-block.optional .txt { white-space:pre-line; }
 .err { color:#b4541f; font-size:12px; margin:4px 0 8px; }
 details.skip > summary, .stream.skip > summary { opacity:.6; }
+details.pfiles, details.excerptFold { margin: 6px 0; font-size: 12px; }
+details.pfiles > summary, details.excerptFold > summary { cursor: pointer; color: var(--sub); }
