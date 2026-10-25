@@ -61,7 +61,7 @@ class App:
 
     def state(self) -> dict:
         weeks = [{"week": p.name, "has_outcomes": (p / "outcomes.json").exists()} for p in sorted(self.weeks_dir.iterdir(), reverse=True) if p.is_dir()]
-        inbox = [s.summary() for s in scan(self.cfg.inbox_dir).values()]
+        inbox = [s.summary() for s in scan(self.cfg.inbox_dir, self.cfg.workspace_dir).values()]
         return {"config": self.cfg.public(), "inbox": inbox, "inbox_status": self.last_inbox, "weeks": weeks,
                 "static_ok": (STATIC_DIR / "index.html").exists()}
 

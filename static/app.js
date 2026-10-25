@@ -65,7 +65,7 @@
   const chapterBadges = s => `<span class="chbs">${[["kind", s.kind], ["value", s.value], ["section", s.section !== s.kind ? s.section : ""]].filter(([, v]) => v)
     .map(([k, v]) => `<span class="chb ${k}">${esc(v)}</span>`).join("")}</span>`;
   const byTier = streams => [streams.filter(s => s.tier !== "appendix"), streams.filter(s => s.tier === "appendix")];
-  const projCount = p => p.schema !== 2 ? `흐름 ${p.streams.length}개` : p.mode === "one_line" ? "한 줄" : p.mode === "daily_list" ? "작업 단위 목록" : `정리 단위 ${p.streams.length}개`;
+  const projCount = p => p.schema < 2 ? `흐름 ${p.streams.length}개` : p.mode === "one_line" ? "한 줄" : p.mode === "daily_list" ? "작업 단위 목록" : `정리 단위 ${p.streams.length}개`;
   function libBlockHtml(b, used) {
     const body = b.type === "image" ? `<div class="lbl">${esc(b.caption)}</div><img src="/files/${esc(b.src)}" alt="">`
       : b.type === "file" ? `<div class="txt">${esc(b.caption)}</div><div class="meta">${esc(b.src.split("/").pop())} · ${fmtSize(b.size)}</div>`
@@ -93,7 +93,7 @@
     const libEl = $("#library");
     const scrollTop = libEl.scrollTop, midScroll = libEl.parentElement.scrollTop;
     if (!w) { libEl.innerHTML = `<p class="muted">주차를 고르세요.</p>`; return; }
-    const first = (w.schema === 2 ? w.projects.find(p => p.streams.length) : w.projects[0])?.streams[0];
+    const first = (w.schema >= 2 ? w.projects.find(p => p.streams.length) : w.projects[0])?.streams[0];
     if (!openStreams.size && first) openStreams.add(first.id);
     const parts = [];
     const streamHtml = s => {
@@ -104,7 +104,7 @@
           blocks.some(b => b.in_page) ? `<details class="pfiles"><summary>페이지 안 파일 ${blocks.filter(b => b.in_page).length}개</summary>${blocks.filter(b => b.in_page).map(b => libBlockHtml(b, used.has(b.id))).join("")}</details>` : ""}</details>`;
     };
     for (const p of w.projects) {
-      if (p.schema === 2) {
+      if (p.schema >= 2) {
         const [main, appendix] = byTier(p.streams);
         const apx = appendix.map(streamHtml).join("");
         let body = main.map(streamHtml).join("") + (apx ? `<div class="tierHead">부록</div>${apx}` : "");
@@ -194,6 +194,8 @@
       }
       if (by.change) html.push(elm(by.change, `<p class="change">${esc(by.change.label)} · ${esc(by.change.text)}</p>`, "opt"));
       if (by.units) html.push(`<details class="units"><summary>근거</summary>${elm(by.units, `<p class="ulines">${esc(by.units.text)}</p>`, "opt")}</details>`);
+      if (s.home && s.home.length)            // v3: files the sender kept home are named, not shown
+        html.push(`<p class="home">집에 있음 · ${s.home.map(h => `${esc(h.title)}: ${h.files.slice(0, 3).map(esc).join(", ")}${h.files.length > 3 ? ` 외 ${h.files.length - 3}개` : ""}`).join(" · ")}</p>`);
       for (const m of by.mds) html.push(mdFullHtml(m));
       const title = by.heading ? `<span class="el inl" data-id="${esc(by.heading.id)}">${esc(s.title)}</span>` : esc(s.title);
       const head = `<h4>${title}${chapterBadges(s)}</h4><button class="addAll" data-stream="${esc(s.id)}">흐름 전체 추가</button>`;
@@ -210,15 +212,19 @@
       const copiesHtml = copies.filter(b => b.type === "image").map(fig).join("") +
         chipsHtml(copies.filter(b => b.type === "page"), copies.filter(b => b.type === "file")) + mediaHtml(copies.filter(b => b.type === "file"));
       const loose = p.mode !== "one_line" && copies.length ? `<div class="tierHead">정리 단위 밖 결과물</div>${copiesHtml}` : "";
+      const late = (p.records || []).filter(r => r.sent === "core" && !r.arrived);   // v3: parts still on the way
+      const lateHtml = late.length ? `<p class="late">아직 안 온 결과물 ${late.length}개: ${late.map(r => esc(r.title)).join(", ")} — 자료 메일이 더 오면 풀립니다.</p>` : "";
+      const homeN = (p.records || []).filter(r => r.sent === "core").reduce((a, r) => a + (r.home || []).length, 0);
+      const homeHtml = p.mode !== "chapters" && homeN ? `<p class="home">집에 있음 · 보낸 쪽에 남은 파일 ${homeN}개 (큰 부속·원본 영상)</p>` : "";
       const body = err + (p.mode === "one_line" ? own("one_line") + copiesHtml
         : own("overview") + main.map(chapterHtml).join("") +
-          (appendix.length ? `<div class="tierHead">부록</div>${appendix.map(chapterHtml).join("")}` : "") + loose);
+          (appendix.length ? `<div class="tierHead">부록</div>${appendix.map(chapterHtml).join("")}` : "") + loose) + homeHtml + lateHtml;
       return foldable(`rd:${w.week}:${p.short}`, "proj", `<h3>${esc(p.short)}</h3><span class="n">${projCount(p)}</span>`, body);
     };
     const parts = [`<div class="wk">${esc(w.week)} · ${esc(w.since || "")} ~ ${esc(w.until || "")}</div>`];
     if (w.warning) parts.push(`<p class="err">${esc(w.warning)}</p>`);
     for (const p of w.projects) {
-      if (p.schema === 2) { parts.push(v2ProjectHtml(p)); continue; }
+      if (p.schema >= 2) { parts.push(v2ProjectHtml(p)); continue; }
       const streamsHtml = [];
       for (const s of p.streams) {
         const by = { heading: null, paras: [], bullets: [], tail: [], images: [], files: [], pages: [], mds: [] };
@@ -252,7 +258,7 @@
       parts.push(foldable(`rd:${w.week}:${p.short}`, "proj", `<h3>${esc(p.short)}</h3><span class="n">흐름 ${p.streams.length}개</span>`, streamsHtml.join("")));
     }
     const weekly = (w.assets || []).find(a => a.src.endsWith("weekly.md"));
-    const weeklyLabel = w.schema === 2 ? "주간 개요" : "주간 방향 보고";
+    const weeklyLabel = w.schema >= 2 ? "주간 개요" : "주간 방향 보고";
     if (weekly) parts.push(foldable(`rd:${w.week}:weekly`, "proj", `<h3>${weeklyLabel}</h3>`, `<article class="weekly" data-stream="${esc(weekly.id)}"><h4><span>${weeklyLabel}</span> <button class="addAll" data-add="${esc(weekly.id)}">전체 추가</button></h4><div class="el" data-id="${esc(weekly.id)}">${mdToHtml(weekly.text)}</div></article>`));
     const readme = (w.assets || []).find(a => a.src.endsWith("README.md"));
     if (readme) parts.push(`<details class="md"><summary>패키지 README</summary><pre>${esc(readme.text)}</pre></details>`);

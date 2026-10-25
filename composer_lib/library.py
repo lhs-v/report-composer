@@ -3,6 +3,10 @@
 v1 packages (`streams`, no `schema`): block ids are `<week>:<short>:<stream_index>:<type>:<n>`.
 v2 packages (`"schema": 2`, `chapters`, see docs/package-format-v2.md): one library stream per chapter, block ids
 `<week>:<short>:<chapter id>:<type>:<n>`, result files found only through `evidence[].package`.
+v3 packages (`"schema": 3`, `records`, see docs/package-format-v3.md): the chapters frame the page as in v2, but
+the results are the records: block ids `<week>:<short>:<chapter id|loose>:<R-id>:<type>:<n>`, files found through
+`records[].files[].href`. A record whose folder has not arrived (its part mail is still on the way) is listed as
+missing; a file that stayed home is named, not a block.
 `src` paths are relative to the weeks dir so the server can serve them under /files/. Week-level assets
 (README, weekly.md, assets/*) sit beside the streams.
 """
@@ -280,6 +284,146 @@ def _v2_project(weeks_dir: Path, week_dir: Path, week: str, project: str, p: dic
     return entry
 
 
+# ---------- v3 (records) ----------
+THUMB_NAMES = ("preview.png", "preview-top.png")
+
+
+def _kind_of(p: Path) -> str:
+    suf = p.suffix.lower()
+    if suf in IMAGE_SUFFIXES:
+        return "image"
+    if suf in TEXT_SUFFIXES:
+        return "markdown"
+    if suf in (".html", ".htm"):
+        return "page"
+    return "file"
+
+
+def _record_blocks(weeks_dir: Path, week_dir: Path, r: dict, prefix: str, meta: dict) -> list[dict]:
+    """Blocks of one record: its representative picture, the file a reader opens, then the other files that
+    travelled (folded as page files). Ids count per type inside the record, so a missing copy elsewhere never
+    shifts them; a record whose folder has not arrived gives no blocks."""
+    rmeta = {"record": r.get("id"), **meta}
+    title = r.get("title") or r.get("id") or ""
+    counters: dict[str, int] = {}
+
+    def bid(kind: str) -> str:
+        n = counters.get(kind, 0)
+        counters[kind] = n + 1
+        return f"{prefix}:{kind}:{n}"
+    blocks: list[dict] = []
+    rep = _pkg_file(week_dir, r.get("representative"))
+    if rep:
+        blocks.append(_asset_block(weeks_dir, rep, bid("image"), caption=title, **rmeta))
+    main = _pkg_file(week_dir, r.get("href"))
+    if main and main != rep:
+        kind = _kind_of(main)
+        blocks.append(_asset_block(weeks_dir, main, bid(kind), caption=title if kind != "file" else f"{title} · {main.name}", **rmeta))
+    for fl in r.get("files") or []:
+        if not isinstance(fl, dict) or not fl.get("href"):
+            continue
+        p = _pkg_file(week_dir, fl["href"])
+        if not p or p in (rep, main) or p.name in THUMB_NAMES or p.name.endswith(".poster.jpg"):
+            continue
+        blocks.append(_asset_block(weeks_dir, p, bid(_kind_of(p)), caption=f"{title} · {p.name}", in_page=True, optional=True, **rmeta))
+    return blocks
+
+
+def _text_blocks(weeks_dir: Path, week_dir: Path, ch: dict, evidence: dict[str, dict], prefix: str, meta: dict) -> list[dict]:
+    """Reply excerpts a chapter cites (E-t…): `<prefix>:text:<pos>`, pos being the place in the chapter's results."""
+    blocks = []
+    for pos, eid in enumerate(ch.get("results") or []):
+        ev = evidence.get(eid) if isinstance(eid, str) and eid.startswith("E-t") else None
+        href = _pkg_file(week_dir, ((ev or {}).get("package") or {}).get("href")) if ev else None
+        if href:
+            blocks.append(_asset_block(weeks_dir, href, f"{prefix}:text:{pos}", caption=ev.get("title") or href.name, eid=eid,
+                                       evidence_kind="text", **meta))
+    return blocks
+
+
+def _record_row(week_dir: Path, r: dict) -> dict:
+    files = [fl for fl in r.get("files") or [] if isinstance(fl, dict)]
+    sent = [fl for fl in files if fl.get("href")]
+    arrived = r.get("sent") == "core" and bool(sent) and any(_pkg_file(week_dir, fl["href"]) for fl in sent)
+    return {"id": r.get("id"), "title": r.get("title") or r.get("id"), "kind": r.get("kind"), "chapter": r.get("chapter"),
+            "sent": r.get("sent"), "why": r.get("why") or "", "arrived": arrived, "href": r.get("href"),
+            "home": [fl.get("rel") for fl in files if fl.get("home")], "home_bytes": r.get("home_bytes") or 0}
+
+
+def _v3_project(weeks_dir: Path, week_dir: Path, week: str, project: str, p: dict, records: list[dict]) -> dict:
+    short = short_project(project)
+    mode = p.get("mode") or "chapters"
+    entry = {"project": project, "short": short, "schema": 3, "mode": mode,
+             "overview": p.get("overview") or "", "one_line": p.get("one_line") or "", "streams": [], "blocks": [], "records": []}
+    pmeta = {"week": week, "project": short}
+    if entry["overview"]:
+        entry["blocks"].append({"id": f"{week}:{short}:overview:paragraph:0", "type": "paragraph", "label": "개요",
+                                "text": entry["overview"], "role": "overview", **pmeta})
+    if mode == "one_line" and entry["one_line"]:
+        entry["blocks"].append({"id": f"{week}:{short}:one_line:paragraph:0", "type": "paragraph", "text": entry["one_line"],
+                                "role": "one_line", **pmeta})
+    mine = [r for r in records if isinstance(r, dict) and r.get("project") == project]
+    entry["records"] = [_record_row(week_dir, r) for r in mine]
+    evidence = {e["eid"]: e for e in p.get("evidence") or [] if isinstance(e, dict) and isinstance(e.get("eid"), str)}
+    chapter_ids: set[str] = set()
+    streams = []
+    if mode == "chapters":
+        by_nn = _chapter_mds(week_dir, short)
+        seen: set[str] = set()
+        for i, ch in enumerate(c for c in p.get("chapters") or [] if isinstance(c, dict)):
+            raw = str(ch.get("id") or "")
+            cid = raw if CID_RE.fullmatch(raw) else f"C-{i}"
+            if cid in seen:
+                cid = f"{cid}-{i}"
+            seen.add(cid)
+            chapter_ids.add(raw)
+            meta = {"week": week, "project": short, "stream": i, "chapter": cid}
+            prefix = f"{week}:{short}:{cid}"
+            blocks: list[dict] = [{"id": f"{prefix}:heading:0", "type": "heading", "level": 2, "text": ch.get("title") or "(제목 없음)", **meta}]
+            if ch.get("lead"):
+                blocks.append({"id": f"{prefix}:lead:0", "type": "paragraph", "label": "요약", "text": ch["lead"], "role": "lead", **meta})
+            for k, s in enumerate(ch.get("sentences") or []):
+                if isinstance(s, dict) and s.get("text"):
+                    blocks.append({"id": f"{prefix}:bullet:{k}", "type": "bullet", "text": s["text"], "unit": s.get("unit"), **meta})
+            home = []
+            for r in mine:
+                if r.get("chapter") == raw and r.get("sent") == "core":
+                    blocks += _record_blocks(weeks_dir, week_dir, r, f"{prefix}:{r['id']}", meta)
+                    rels = [fl.get("rel") for fl in r.get("files") or [] if isinstance(fl, dict) and fl.get("home")]
+                    if rels:
+                        home.append({"record": r["id"], "title": r.get("title") or r["id"], "files": rels, "bytes": r.get("home_bytes") or 0})
+            blocks += _text_blocks(weeks_dir, week_dir, ch, evidence, prefix, meta)
+            if ch.get("change"):
+                blocks.append({"id": f"{prefix}:change:0", "type": "paragraph", "label": "지난주 대비", "text": ch["change"], "optional": True,
+                               "role": "change", **meta})
+            units_text = _units_text(ch.get("units"))
+            if units_text:
+                blocks.append({"id": f"{prefix}:units:0", "type": "paragraph", "label": "근거 작업 단위", "text": units_text, "optional": True,
+                               "role": "units", "units": [u.get("id") for u in ch.get("units") or [] if isinstance(u, dict)], **meta})
+            for k, md in enumerate(_chapter_md(week_dir, short, i + 1, ch, by_nn)):
+                blocks.append(_asset_block(weeks_dir, md, f"{prefix}:md:{k}", caption=md.name, **meta))
+            stream = {"id": prefix, "chapter": cid, "title": ch.get("title") or "(제목 없음)", "status": "", "home": home}
+            stream.update({k: str(ch.get(k) or "") for k in CHAPTER_META})
+            stream["tier"] = stream["tier"] or "main"
+            stream["blocks"] = blocks
+            streams.append(stream)
+    elif mode == "daily_list":
+        meta = {**pmeta, "stream": 0, "chapter": DAILY_ID}
+        prefix = f"{week}:{short}:{DAILY_ID}"
+        blocks = []
+        for k, u in enumerate(p.get("units") or []):
+            text = _units_text([u])
+            if text:
+                blocks.append({"id": f"{prefix}:bullet:{k}", "type": "bullet", "text": text, "unit": u.get("id"), **meta})
+        streams.append({"id": prefix, "chapter": DAILY_ID, "title": "작업 단위 목록", "status": "", "kind": "", "value": "", "tier": "main",
+                        "section": "", "label": "", "lead": "", "change": "", "home": [], "blocks": blocks})
+    entry["streams"] = streams
+    for r in mine:                                   # records no chapter cites (every record before the weekly run)
+        if r.get("sent") == "core" and (not r.get("chapter") or r.get("chapter") not in chapter_ids):
+            entry["blocks"] += _record_blocks(weeks_dir, week_dir, r, f"{week}:{short}:loose:{r['id']}", pmeta)
+    return entry
+
+
 def _week_entry(weeks_dir: Path, week_dir: Path) -> dict:
     week = week_dir.name
     entry = {"week": week, "since": None, "until": None, "schema": 1, "projects": [], "assets": []}
@@ -295,18 +439,26 @@ def _week_entry(weeks_dir: Path, week_dir: Path) -> dict:
     if data:
         schema = data.get("schema") if isinstance(data.get("schema"), int) else 1
         v2 = schema >= 2
+        v3 = schema >= 3 and isinstance(data.get("records"), list)
         entry["since"], entry["until"] = data.get("since"), data.get("until")
-        entry["schema"] = 2 if v2 else 1
-        if schema > 2:
-            entry["warning"] = f"이 컴포저가 모르는 패키지 형식(v{schema})입니다. v2로 읽었으니 빠진 내용이 있을 수 있습니다."
+        entry["schema"] = 3 if v3 else 2 if v2 else 1
+        if schema > 3:
+            entry["warning"] = f"이 컴포저가 모르는 패키지 형식(v{schema})입니다. v{3 if v3 else 2}로 읽었으니 빠진 내용이 있을 수 있습니다."
+        records = data.get("records") if v3 else []
         for project, p in (data.get("projects") or {}).items():
             if not isinstance(p, dict):
                 continue
             try:
-                entry["projects"].append((_v2_project if v2 else _v1_project)(weeks_dir, week_dir, week, project, p))
+                if v3:
+                    entry["projects"].append(_v3_project(weeks_dir, week_dir, week, project, p, records))
+                else:
+                    entry["projects"].append((_v2_project if v2 else _v1_project)(weeks_dir, week_dir, week, project, p))
             except Exception as e:      # one malformed project must not take the whole library down
                 entry["projects"].append({"project": project, "short": short_project(project), "schema": entry["schema"],
                                           "mode": "error", "streams": [], "blocks": [], "error": f"{type(e).__name__}: {e}"})
+    if entry["schema"] == 3:                       # records whose part mail has not arrived yet
+        entry["missing"] = [{"project": pr["short"], "id": r["id"], "title": r["title"]}
+                            for pr in entry["projects"] for r in pr.get("records") or [] if r.get("sent") == "core" and not r.get("arrived")]
     n = 0
     for p in sorted(week_dir.iterdir()):
         if p.is_file() and p.suffix.lower() in TEXT_SUFFIXES and (not data or not any(p.name.startswith(f"{pr['short']}-") for pr in entry["projects"])):

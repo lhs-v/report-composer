@@ -363,10 +363,10 @@ class ReviewRegressionTests(unittest.TestCase):
         self.assertTrue(img["src"].endswith("preview-top.png"))
 
     def test_a_newer_schema_is_read_as_chapters_with_a_warning(self):
-        self.data["schema"] = 3
+        self.data["schema"] = 4                                      # no `records`: read as the chapters it has
         week, projects = self.rebuild()
         self.assertEqual(week["schema"], 2)
-        self.assertIn("v3", week["warning"])
+        self.assertIn("v4", week["warning"])
         self.assertTrue(projects["alpha"]["streams"])
 
 
