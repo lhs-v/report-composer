@@ -460,7 +460,7 @@
     const g = st.gemini || {};
     $("#polishModel").value = localStorage.getItem("cp.polish.model") || g.model || "gemini-3.8-flash";
     $("#polishInstructions").value = localStorage.getItem("cp.polish.instructions") || POLISH_DEFAULT;
-    $("#polishStyle").value = localStorage.getItem("cp.polish.style") || "polite";
+    $("#polishStyle").value = localStorage.getItem("cp.polish.style") || "brief";
     $("#polishError").textContent = ""; $("#polishState").textContent = `명령: ${g.command || "gemini"} · 초안 블록 ${state.draft.blocks.length}개`;
     $("#polishRun").disabled = false;
     $("#polishDlg").showModal();

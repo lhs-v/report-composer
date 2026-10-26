@@ -82,11 +82,11 @@ class MarkdownRoundTrip(unittest.TestCase):
 
 class StyleTests(unittest.TestCase):
     def test_the_prompt_carries_the_chosen_style_and_defaults_to_polite(self):
-        self.assertIn("~했습니다", polish.build_prompt(""))                      # the default: a polite report voice
+        self.assertIn("~함/~완료", polish.build_prompt(""))                      # the default: bullet style (2026-10-26)
         self.assertNotIn("~했다/~이다", polish.build_prompt(""))
-        self.assertIn("~함/~완료", polish.build_prompt("", style="brief"))
+        self.assertIn("~했습니다", polish.build_prompt("", style="polite"))
         self.assertIn("~했다/~이다", polish.build_prompt("", style="plain"))
-        self.assertIn("~했습니다", polish.build_prompt("", style="nonsense"))     # unknown: the default
+        self.assertIn("~함/~완료", polish.build_prompt("", style="nonsense"))     # unknown: the default
 
     def test_polish_draft_passes_the_style_and_records_it(self):
         import sys

@@ -329,7 +329,7 @@ def make_handler(app: App):
                     return self._json(400, {"error": "draft_id"})
                 model = str(body.get("model") or app.cfg.gemini.model)[:80]
                 instructions = str(body.get("instructions") or "")[:4000]
-                style = str(body.get("style") or "polite")
+                style = str(body.get("style") or "brief")
                 if style not in ("polite", "brief", "plain"):
                     return self._json(400, {"error": "style"})
                 try:

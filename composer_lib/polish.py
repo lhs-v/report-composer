@@ -162,7 +162,7 @@ STYLES = {
     "brief": "개조식(명사형 종결: ~함/~완료/~예정). 한 줄에 한 사실, 조사와 군더더기를 줄인다. 제목·목록 위주로 짧게.",
     "plain": "담백한 평서체(~했다/~이다).",
 }
-DEFAULT_STYLE = "polite"
+DEFAULT_STYLE = "brief"
 
 
 def build_prompt(instructions: str, style: str = DEFAULT_STYLE) -> str:
