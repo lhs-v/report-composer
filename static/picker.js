@@ -19,7 +19,7 @@
 
   // ---------- classifying elements ----------
   const MEDIA = "img, svg, canvas, video, audio";
-  const SKIP = "script, style, template, noscript, button, input, select, textarea, label, nav, [role=button], [hidden], .cp-tip";
+  const SKIP = "script, style, template, noscript, button, input, select, textarea, label, nav, [role=button], [hidden], .cp-tip, #cp-frame";
   const cs = el => getComputedStyle(el);
   const tagOf = el => (el.tagName || "").toUpperCase();
   const BLOCK_TAGS = /^(P|DIV|SECTION|ARTICLE|LI|DD|DT|H[1-6]|BLOCKQUOTE|PRE|FIGURE|FIGCAPTION|TD|TH|ASIDE|HEADER|FOOTER|MAIN|DETAILS|SUMMARY|UL|OL|TABLE|OUTPUT)$/;
@@ -253,9 +253,10 @@
   // ---------- a paused video's frame ----------
   // Pause a video (or seek while paused) and a button appears on it: the frame on screen becomes a picture in the draft.
   const frameBtn = document.createElement("button");
-  frameBtn.id = "cp-frame"; frameBtn.type = "button"; frameBtn.className = "cp-tip";
+  frameBtn.id = "cp-frame"; frameBtn.type = "button";
   Object.assign(frameBtn.style, { position: "fixed", zIndex: 2147483647, display: "none", font: "12px 'Noto Sans KR',sans-serif", padding: "4px 10px",
-    border: "1px solid #3a5a7c", borderRadius: "6px", background: "#fff", color: "#3a5a7c", cursor: "pointer", boxShadow: "0 1px 4px rgba(0,0,0,.2)" });
+    border: "1px solid #3a5a7c", borderRadius: "6px", background: "#fff", color: "#3a5a7c", cursor: "pointer", boxShadow: "0 1px 4px rgba(0,0,0,.2)", pointerEvents: "auto" });
+  frameBtn.addEventListener("mouseover", e => e.stopPropagation(), true);      // the picker's hover must not treat the button as a unit
   document.documentElement.appendChild(frameBtn);
   let frameVideo = null;
   const mmss = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
