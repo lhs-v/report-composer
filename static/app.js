@@ -36,7 +36,11 @@
   function renderInbox(st) {
     const pending = (st.inbox || []).filter(i => !i.complete);
     const pill = $("#inboxStatus");
-    if (st.version) $("#appVersion").textContent = "v" + st.version;        // which build is running, at a glance
+    if (st.version) {                                                          // which build is running, at a glance
+      const stale = st.file_version && st.file_version !== st.version;
+      $("#appVersion").textContent = "v" + st.version + (stale ? ` — 폴더에는 v${st.file_version}: 컴포저를 껐다 켜세요` : "");
+      $("#appVersion").classList.toggle("stale", !!stale);
+    }
     pill.title = `받은편지함: ${st.config.inbox_dir}`;
     if (pending.length) {
       pill.className = "pill warn";

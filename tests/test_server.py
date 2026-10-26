@@ -201,6 +201,13 @@ class ServerTests(unittest.TestCase):
         status, _ = self.req("/api/polish", "POST", {"draft_id": "nope"})
         self.assertEqual(status, 400)
 
+    def test_state_tells_the_running_version_and_the_one_on_disk(self):
+        from composer_lib import __version__
+        status, st = self.req("/api/state")
+        self.assertEqual(status, 200)
+        self.assertEqual(st["version"], __version__)
+        self.assertEqual(st["file_version"], __version__)                       # same here; a stale process would differ
+
     def test_a_page_opens_the_720p_copy_where_an_older_package_pointed_home(self):
         from composer_lib.server import substitute_copies
         w = self.cfg.workspace_dir / "weeks" / "2026-W42" / "records" / "alpha" / "R-1"

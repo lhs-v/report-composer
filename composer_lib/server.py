@@ -62,7 +62,8 @@ class App:
     def state(self) -> dict:
         weeks = [{"week": p.name, "has_outcomes": (p / "outcomes.json").exists()} for p in sorted(self.weeks_dir.iterdir(), reverse=True) if p.is_dir()]
         inbox = [s.summary() for s in scan(self.cfg.inbox_dir, self.cfg.workspace_dir).values()]
-        return {"config": self.cfg.public(), "version": __version__, "gemini": {"model": self.cfg.gemini.model, "command": self.cfg.gemini.command},
+        return {"config": self.cfg.public(), "version": __version__, "file_version": installed_version(),
+                "gemini": {"model": self.cfg.gemini.model, "command": self.cfg.gemini.command},
                 "inbox": inbox, "inbox_status": self.last_inbox, "weeks": weeks,
                 "static_ok": (STATIC_DIR / "index.html").exists()}
 
@@ -109,6 +110,17 @@ class App:
 
 PAGE_BASE_CSS = ("html,body{margin:0;padding:0}body{font-family:'Noto Sans KR','Malgun Gothic',system-ui,sans-serif;font-size:14px;line-height:1.5;"
                  "padding:12px 16px;color:#1c2320;background:#fff}img,video,canvas{max-width:100%}")
+
+
+def installed_version() -> str | None:
+    """The version written in composer_lib/__init__.py on disk — after a zip is unpacked over a running composer
+    it differs from the imported one until the process is restarted, and the title bar says so."""
+    try:
+        text = (Path(__file__).resolve().parent / "__init__.py").read_text(encoding="utf-8")
+        m = re.search(r'__version__\s*=\s*"([^"]+)"', text)
+        return m.group(1) if m else None
+    except OSError:
+        return None
 
 
 def wrap_page(fragment: str, base_href: str) -> str:

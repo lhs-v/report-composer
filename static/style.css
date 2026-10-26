@@ -210,3 +210,5 @@ details.pfiles > summary, details.excerptFold > summary { cursor: pointer; color
 #polishDlg textarea { width: 100%; font: inherit; font-size: 13px; padding: 6px 8px; box-sizing: border-box; }
 #polishDlg input { width: 100%; box-sizing: border-box; }
 button.accent { background: #3a5a7c; color: #fff; border-color: #3a5a7c; }
+
+#appVersion.stale { color: #a8512b; font-weight: 600; }
