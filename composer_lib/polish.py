@@ -1,0 +1,209 @@
+"""Polish a rough draft with the Gemini CLI (stdlib only; the CLI itself is whatever `gemini` is on the PATH).
+
+The draft's text blocks go out as markdown; pictures, files and column layouts stay home and travel only as
+`[[B:n]]` placeholders the model must keep in place. The answer comes back as markdown and becomes a *new* draft
+beside the rough one, so nothing the user assembled is overwritten. No file content and no local paths leave."""
+from __future__ import annotations
+
+import copy
+import re
+import secrets
+import shlex
+import subprocess
+
+TEXT_TYPES = ("heading", "paragraph", "bullets", "table", "callout", "divider")
+DEFAULT_MODEL = "gemini-3.8-flash"
+DEFAULT_INSTRUCTIONS = ("이 글은 한 주 동안의 업무를 다른 팀 사람과 관리자도 읽는 주간 보고입니다. 배경을 모르는 사람도 이해할 수 있게, "
+                        "짧은 메모를 완전한 문장으로 풀고 흐름이 이어지게 다듬어 주세요. 전문 용어는 처음 나올 때 한 번 쉽게 풀어 쓰고, "
+                        "과장하지 말고 담백하게, 전체 길이는 원문의 1.5배를 넘지 않게 해 주세요.")
+TIMEOUT = 240
+
+
+class PolishError(Exception):
+    pass
+
+
+def _ph(n: int) -> str:
+    return f"[[B:{n}]]"
+
+
+def to_markdown(blocks: list[dict]) -> tuple[str, dict[str, dict]]:
+    """(markdown with placeholders, {placeholder: original block})."""
+    out: list[str] = []
+    kept: dict[str, dict] = {}
+    for n, b in enumerate(blocks, 1):
+        t = b.get("type")
+        if t == "heading":
+            out.append(("### " if b.get("level") == 3 else "## ") + (b.get("text") or ""))
+        elif t == "paragraph":
+            out.append(b.get("text") or "")
+        elif t == "bullets":
+            out.append("\n".join(f"- {it}" for it in (b.get("items") or []) if str(it).strip()))
+        elif t == "table":
+            rows = [[str(c).replace("|", "／").replace("\n", " ") for c in r] for r in (b.get("rows") or [])]
+            if rows:
+                width = max(len(r) for r in rows)
+                rows = [r + [""] * (width - len(r)) for r in rows]
+                lines = ["| " + " | ".join(rows[0]) + " |", "|" + "---|" * width] + ["| " + " | ".join(r) + " |" for r in rows[1:]]
+                out.append("\n".join(lines))
+        elif t == "callout":
+            out.append("\n".join("> " + line for line in (b.get("text") or "").split("\n")))
+        elif t == "divider":
+            out.append("---")
+        else:                                              # image, file, columns, anything new: a placeholder
+            ph = _ph(n)
+            kept[ph] = b
+            out.append(ph)
+    return "\n\n".join(x for x in out if x is not None), kept
+
+
+def _new_id() -> str:
+    return "b-" + secrets.token_hex(4)
+
+
+def _fresh(block: dict) -> dict:
+    b = copy.deepcopy(block)
+    b["id"] = _new_id()
+    if b.get("type") == "columns":
+        for col in b.get("cols") or []:
+            for nb in col:
+                if isinstance(nb, dict):
+                    nb["id"] = _new_id()
+    return b
+
+
+_PH_RE = re.compile(r"^\s*(\[\[B:\d+\]\])\s*$")
+_FENCE_RE = re.compile(r"```[a-zA-Z]*\n(.*?)```", re.S)
+
+
+def from_markdown(text: str, kept: dict[str, dict]) -> list[dict]:
+    """Markdown back into draft blocks; placeholders become the original blocks (with new ids); placeholders the
+    model dropped are appended at the end so no picture or file is lost."""
+    fences = _FENCE_RE.findall(text)
+    if fences:                                             # the answer wrapped in a fence (with or without a preamble)
+        text = max(fences, key=len)
+    lines = text.replace("\r\n", "\n").split("\n")
+    blocks: list[dict] = []
+    used: set[str] = set()
+    para: list[str] = []
+    items: list[str] = []
+    quote: list[str] = []
+    rows: list[list[str]] = []
+
+    def flush():
+        nonlocal para, items, quote, rows
+        if para:
+            blocks.append({"id": _new_id(), "type": "paragraph", "text": " ".join(s.strip() for s in para)})
+            para = []
+        if items:
+            blocks.append({"id": _new_id(), "type": "bullets", "items": items})
+            items = []
+        if quote:
+            blocks.append({"id": _new_id(), "type": "callout", "text": "\n".join(quote)})
+            quote = []
+        if rows:
+            blocks.append({"id": _new_id(), "type": "table", "rows": rows, "header": True})
+            rows = []
+    for raw in lines:
+        line = raw.rstrip()
+        pm = _PH_RE.match(line)
+        if pm:
+            flush()
+            ph = pm.group(1)
+            if ph in kept and ph not in used:
+                blocks.append(_fresh(kept[ph]))
+                used.add(ph)
+            continue
+        if not line.strip():
+            flush()
+            continue
+        hm = re.match(r"^(#{1,6})\s+(.*)$", line)
+        if hm:
+            flush()
+            blocks.append({"id": _new_id(), "type": "heading", "level": 3 if len(hm.group(1)) >= 3 else 2, "text": hm.group(2).strip()})
+            continue
+        if re.match(r"^\s*(-{3,}|\*{3,})\s*$", line):
+            flush()
+            blocks.append({"id": _new_id(), "type": "divider"})
+            continue
+        bm = re.match(r"^\s*(?:[-*•]|\d+[.)])\s+(.*)$", line)
+        if bm:
+            if para or quote or rows:
+                flush()
+            items.append(bm.group(1).strip())
+            continue
+        if line.lstrip().startswith("|"):
+            if para or items or quote:
+                flush()
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if all(re.fullmatch(r":?-{2,}:?", c) for c in cells if c):
+                continue                                   # the header separator
+            rows.append(cells)
+            continue
+        if line.lstrip().startswith(">"):
+            if para or items or rows:
+                flush()
+            quote.append(line.lstrip()[1:].strip())
+            continue
+        if items or quote or rows:
+            flush()
+        para.append(line)
+    flush()
+    for ph, b in kept.items():                             # anything the model left out comes back at the end
+        if ph not in used:
+            blocks.append(_fresh(b))
+    return blocks
+
+
+def build_prompt(instructions: str) -> str:
+    return (
+        "너는 주간 업무 보고서를 다듬는 편집자다. 표준 입력으로 받은 마크다운 초안을 아래 규칙대로 다시 써서 **마크다운만** 출력하라. "
+        "설명이나 서문, 코드 펜스는 붙이지 않는다.\n\n"
+        "규칙:\n"
+        "1. 사실·숫자·고유명사·파일 이름은 바꾸거나 더하지 않는다. 초안에 없는 내용을 지어내지 않는다.\n"
+        "2. `[[B:n]]` 꼴의 자리표시자 줄은 그림·파일·표 배치다. 글자 하나 바꾸지 말고 **같은 순서로, 각각 한 줄에 그대로** 남겨라. 빼거나 합치지 않는다.\n"
+        "3. 제목은 `##`/`###`, 목록은 `- `, 표는 마크다운 표, 강조 상자는 `> ` 인용으로 쓴다. 다른 서식은 쓰지 않는다.\n"
+        "4. 한국어로 쓴다. 영어 고유명사·코드 식별자는 원문 그대로 둔다.\n"
+        "5. 문체: 담백한 보고체(~했다/~이다). 느낌표·이모지 없음.\n\n"
+        f"다듬는 방향: {instructions.strip() or DEFAULT_INSTRUCTIONS}\n"
+    )
+
+
+def default_runner(cmd: list[str], text: str, timeout: int) -> tuple[int, str, str]:
+    import os
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}          # a Python stand-in speaks UTF-8 too
+    p = subprocess.run(cmd, input=text, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, env=env)
+    return p.returncode, p.stdout, p.stderr
+
+
+def polish_draft(drafts, draft_id: str, model: str, instructions: str, command: str = "gemini", runner=None, timeout: int = TIMEOUT) -> dict:
+    """Run the CLI on the draft's text and save the answer as a new draft `<title> · 다듬음`. Raises PolishError
+    with a message the UI can show."""
+    runner = runner or default_runner
+    src = drafts.get(draft_id)
+    if src is None:
+        raise PolishError("초안을 찾지 못했습니다")
+    md, kept = to_markdown(src.get("blocks") or [])
+    if not any(b.get("type") in TEXT_TYPES and b.get("type") != "divider" for b in src.get("blocks") or []):
+        raise PolishError("다듬을 글이 없습니다: 문단이나 제목을 먼저 몇 줄 넣어 주세요")
+    exe = shlex.split(command, posix=False) if (" " in command.strip()) else [command]
+    exe = [part.strip('"') for part in exe]
+    cmd = [*exe, "-m", model or DEFAULT_MODEL, "-p", build_prompt(instructions)]
+    try:
+        code, out, err = runner(cmd, md, timeout)
+    except FileNotFoundError:
+        raise PolishError(f"'{command}' 명령을 찾지 못했습니다. Gemini CLI가 설치되어 PATH에 있어야 합니다 (npm i -g @google/gemini-cli, 로그인: gemini).")
+    except subprocess.TimeoutExpired:
+        raise PolishError(f"{timeout}초 안에 답이 오지 않았습니다. 초안을 나누거나 다시 시도해 주세요.")
+    if code != 0:
+        raise PolishError(f"Gemini CLI 오류 (종료 코드 {code}): {(err or out or '').strip()[-600:]}")
+    if not (out or "").strip():
+        raise PolishError("Gemini의 답이 비어 있습니다. 모델 이름이 맞는지, 로그인이 되어 있는지 확인해 주세요." + (f" ({err.strip()[-300:]})" if err and err.strip() else ""))
+    blocks = from_markdown(out, kept)
+    if not blocks:
+        raise PolishError("답을 초안으로 바꾸지 못했습니다: " + out.strip()[:300])
+    new = drafts.create(f"{src.get('title', '')} · 다듬음")
+    new["blocks"] = blocks
+    new["polished_from"] = draft_id
+    new["polish"] = {"model": model or DEFAULT_MODEL, "instructions": instructions, "at": new["created"]}
+    return drafts.save(new)

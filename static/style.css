@@ -205,3 +205,8 @@ details.pfiles > summary, details.excerptFold > summary { cursor: pointer; color
 /* v3: what stayed home, what has not arrived */
 .home { font-size: 12px; color: #6f685d; margin: 6px 0 0; }
 .late { font-size: 12px; color: #a8512b; border-top: 1px dashed #e3dccf; padding-top: 6px; margin: 8px 0 0; }
+
+/* polish dialog */
+#polishDlg textarea { width: 100%; font: inherit; font-size: 13px; padding: 6px 8px; box-sizing: border-box; }
+#polishDlg input { width: 100%; box-sizing: border-box; }
+button.accent { background: #3a5a7c; color: #fff; border-color: #3a5a7c; }

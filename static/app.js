@@ -448,6 +448,37 @@
   }
 
   // ---------- drafts ----------
+  // ---------- polish with the Gemini CLI ----------
+  const POLISH_DEFAULT = "이 글은 한 주 동안의 업무를 다른 팀 사람과 관리자도 읽는 주간 보고입니다. 배경을 모르는 사람도 이해할 수 있게, 짧은 메모를 완전한 문장으로 풀고 흐름이 이어지게 다듬어 주세요. 전문 용어는 처음 나올 때 한 번 쉽게 풀어 쓰고, 과장하지 말고 담백하게, 전체 길이는 원문의 1.5배를 넘지 않게 해 주세요.";
+  async function openPolish() {
+    if (!state.draft) { toast("먼저 초안을 고르거나 만드세요."); return; }
+    const st = await api("/api/state");
+    const g = st.gemini || {};
+    $("#polishModel").value = localStorage.getItem("cp.polish.model") || g.model || "gemini-3.8-flash";
+    $("#polishInstructions").value = localStorage.getItem("cp.polish.instructions") || POLISH_DEFAULT;
+    $("#polishError").textContent = ""; $("#polishState").textContent = `명령: ${g.command || "gemini"} · 초안 블록 ${state.draft.blocks.length}개`;
+    $("#polishRun").disabled = false;
+    $("#polishDlg").showModal();
+  }
+  async function runPolish() {
+    const model = $("#polishModel").value.trim(), instructions = $("#polishInstructions").value.trim();
+    localStorage.setItem("cp.polish.model", model); localStorage.setItem("cp.polish.instructions", instructions);
+    $("#polishError").textContent = ""; $("#polishRun").disabled = true;
+    $("#polishState").textContent = "Gemini가 다듬는 중… (보통 10~60초)";
+    try {
+      const res = await api("/api/polish", { method: "POST", body: { draft_id: state.draft.id, model, instructions } });
+      $("#polishDlg").close();
+      await refreshDrafts(); await openDraft(res.draft.id);
+      toast(`다듬은 초안을 열었습니다: ${esc(res.draft.title)} (원래 초안은 그대로 있습니다)`, 3000);
+    } catch (err) {
+      $("#polishError").textContent = err.message || String(err);
+      $("#polishState").textContent = ""; $("#polishRun").disabled = false;
+    }
+  }
+  $("#polishBtn").onclick = openPolish;
+  $("#polishRun").onclick = runPolish;
+  $("#polishCancel").onclick = () => $("#polishDlg").close();
+
   function renderDraftSelect() {
     $("#draftSelect").innerHTML = state.drafts.map(d => `<option value="${esc(d.id)}" ${d.id === state.draft?.id ? "selected" : ""}>${esc(d.title)}${d.confluence?.page_id ? " ↑" : ""}</option>`).join("");
   }

@@ -29,6 +29,14 @@ class ConfluenceConfig:
 
 
 @dataclass
+class GeminiConfig:
+    """The Gemini CLI that polishes a draft: `command` is the executable (a path or a command line, split like a
+    shell would), `model` the default model the dialog offers."""
+    command: str = "gemini"
+    model: str = "gemini-3.8-flash"
+
+
+@dataclass
 class Config:
     inbox_dir: Path = field(default_factory=lambda: Path.home() / "Downloads" / "report-inbox")
     workspace_dir: Path = field(default_factory=lambda: Path.home() / "report-composer")
@@ -37,6 +45,7 @@ class Config:
     # cannot call the composer's API (drafts, Confluence publishing)
     page_host: str = "localhost"
     confluence: ConfluenceConfig = field(default_factory=ConfluenceConfig)
+    gemini: GeminiConfig = field(default_factory=GeminiConfig)
     path: Path | None = None
 
     def public(self) -> dict:
@@ -70,6 +79,8 @@ def load_config(path: Path | None) -> Config:
             cfg.port = int(raw["port"])
         if raw.get("page_host"):
             cfg.page_host = page_host(str(raw["page_host"]))
+        g = raw.get("gemini") or {}
+        cfg.gemini = GeminiConfig(command=str(g.get("command") or "gemini"), model=str(g.get("model") or GeminiConfig.model))
         c = raw.get("confluence") or {}
         cfg.confluence = ConfluenceConfig(
             base_url=str(c.get("base_url") or "").rstrip("/"),

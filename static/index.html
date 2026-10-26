@@ -21,7 +21,28 @@
   <button id="undoBtn" title="되돌리기 (Ctrl+Z)">↶</button>
   <button id="redoBtn" title="다시 실행 (Ctrl+Shift+Z)">↷</button>
   <span id="saveState" class="muted small">저장됨</span>
+  <span class="sep"></span>
+  <button id="polishBtn" class="accent" title="대충 쓴 초안을 Gemini로 다듬어 새 초안으로 만듭니다">✨ 다듬기</button>
 </header>
+
+<dialog id="polishDlg">
+  <form method="dialog" class="dlg">
+    <h3>Gemini로 다듬기</h3>
+    <p class="muted small">지금 초안의 <b>글(제목·문단·목록·표·강조 상자)</b>만 Gemini CLI로 보내 다시 씁니다. 그림·파일·영상은 보내지 않고 자리만 지킵니다.
+      결과는 <b>새 초안</b>("… · 다듬음")으로 생기고, 지금 초안은 그대로 남습니다.</p>
+    <label>모델 <input id="polishModel" placeholder="gemini-3.8-flash"></label>
+    <label>다듬는 방향
+      <textarea id="polishInstructions" rows="4"></textarea>
+    </label>
+    <p id="polishError" class="error"></p>
+    <div class="row">
+      <span id="polishState" class="muted small"></span>
+      <span class="sp"></span>
+      <button type="button" id="polishCancel">취소</button>
+      <button type="button" id="polishRun" class="accent">다듬기</button>
+    </div>
+  </form>
+</dialog>
 
 <main class="cols">
   <aside class="col left">

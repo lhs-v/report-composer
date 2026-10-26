@@ -170,6 +170,37 @@ class ServerTests(unittest.TestCase):
         self.assertIn("<h2>결과</h2>", text)
         self.assertEqual(self.req("/page/2026-W42/../x.html")[0], 404)
 
+    def test_polish_runs_the_configured_cli_and_opens_the_answer_as_a_new_draft(self):
+        import sys
+        fake = Path(self.tmp.name) / "fake_gemini.py"
+        fake.write_text("import sys\nargs=sys.argv[1:]\nsrc=sys.stdin.read()\n"
+                        "assert '-m' in args and args[args.index('-m')+1]=='gemini-test'\n"
+                        "prompt=args[args.index('-p')+1]\nassert '[[B:n]]' in prompt and '쉬운 말' in prompt\n"
+                        "out=['## 다듬은 제목','','메모를 문장으로 풀었다.']\n"
+                        "out+=[l for l in src.splitlines() if l.startswith('[[B:')]\n"
+                        "print('\\n\\n'.join(out))\n", encoding="utf-8")
+        self.cfg.gemini.command = f'"{sys.executable}" "{fake}"'
+        status, d = self.req("/api/drafts", "POST", {"title": "거친 초안"})
+        d["blocks"] = [{"id": "x1", "type": "paragraph", "text": "맵 만듬. 결과 ok"},
+                       {"id": "x2", "type": "image", "src": "2026-W42/pages/alpha-01/preview.png", "caption": "그림"}]
+        self.req(f"/api/drafts/{d['id']}", "PUT", d)
+        status, res = self.req("/api/polish", "POST", {"draft_id": d["id"], "model": "gemini-test", "instructions": "쉬운 말로"})
+        self.assertEqual(status, 200, res)
+        new = res["draft"]
+        self.assertEqual(new["title"], "거친 초안 · 다듬음")
+        self.assertEqual([b["type"] for b in new["blocks"]], ["heading", "paragraph", "image"])
+        self.assertEqual(new["blocks"][2]["src"], "2026-W42/pages/alpha-01/preview.png")
+        self.assertEqual(new["polished_from"], d["id"])
+        status, again = self.req(f"/api/drafts/{d['id']}")
+        self.assertEqual(again["blocks"][0]["text"], "맵 만듬. 결과 ok")                    # the rough draft is untouched
+        self.cfg.gemini.command = "no-such-gemini-cli"
+        status, res = self.req("/api/polish", "POST", {"draft_id": d["id"]})
+        self.assertEqual(status, 409)
+        err = res if isinstance(res, dict) else json.loads(res)
+        self.assertIn("no-such-gemini-cli", err["error"])
+        status, _ = self.req("/api/polish", "POST", {"draft_id": "nope"})
+        self.assertEqual(status, 400)
+
     def test_a_page_opens_the_720p_copy_where_an_older_package_pointed_home(self):
         from composer_lib.server import substitute_copies
         w = self.cfg.workspace_dir / "weeks" / "2026-W42" / "records" / "alpha" / "R-1"

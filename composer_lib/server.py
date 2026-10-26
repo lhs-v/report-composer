@@ -62,7 +62,8 @@ class App:
     def state(self) -> dict:
         weeks = [{"week": p.name, "has_outcomes": (p / "outcomes.json").exists()} for p in sorted(self.weeks_dir.iterdir(), reverse=True) if p.is_dir()]
         inbox = [s.summary() for s in scan(self.cfg.inbox_dir, self.cfg.workspace_dir).values()]
-        return {"config": self.cfg.public(), "version": __version__, "inbox": inbox, "inbox_status": self.last_inbox, "weeks": weeks,
+        return {"config": self.cfg.public(), "version": __version__, "gemini": {"model": self.cfg.gemini.model, "command": self.cfg.gemini.command},
+                "inbox": inbox, "inbox_status": self.last_inbox, "weeks": weeks,
                 "static_ok": (STATIC_DIR / "index.html").exists()}
 
     def export(self, draft: dict) -> dict:
@@ -309,6 +310,20 @@ def make_handler(app: App):
             if p == "/api/preview":
                 xhtml = render(body.get("blocks") or [])
                 return self._json(200, {"xhtml": xhtml, "error": validate(xhtml)})
+            if p == "/api/polish":
+                from .polish import PolishError, polish_draft
+                did = str(body.get("draft_id") or "")
+                if not re.fullmatch(r"d-[0-9a-f]+", did):
+                    return self._json(400, {"error": "draft_id"})
+                model = str(body.get("model") or app.cfg.gemini.model)[:80]
+                instructions = str(body.get("instructions") or "")[:4000]
+                try:
+                    new = polish_draft(app.drafts, did, model=model, instructions=instructions, command=app.cfg.gemini.command)
+                except PolishError as e:
+                    return self._json(409, {"error": str(e)})
+                except Exception as e:  # noqa: BLE001
+                    return self._json(500, {"error": f"{type(e).__name__}: {e}"})
+                return self._json(200, {"draft": new})
             m = re.fullmatch(r"/api/confluence/publish/(d-[0-9a-f]+)", p)
             if m:
                 d = app.drafts.get(m.group(1))
