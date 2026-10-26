@@ -6,9 +6,11 @@ beside the rough one, so nothing the user assembled is overwritten. No file cont
 from __future__ import annotations
 
 import copy
+import os
 import re
 import secrets
 import shlex
+import shutil
 import subprocess
 
 TEXT_TYPES = ("heading", "paragraph", "bullets", "table", "callout", "divider")
@@ -169,8 +171,31 @@ def build_prompt(instructions: str) -> str:
     )
 
 
+STDIN_HEAD = "=== 지시 (아래 규칙대로 그 다음의 초안을 다시 쓴다) ===\n\n"
+STDIN_DRAFT = "\n\n=== 초안 (여기부터 다듬을 마크다운) ===\n\n"
+# The -p text stays ASCII and one line: on Windows the npm `gemini.cmd` shim passes arguments through cmd.exe,
+# which mangles quotes, percent signs and newlines. The real instructions and the draft travel on stdin.
+P_FLAG = "Rewrite the draft given on stdin by following the Korean instructions at its top. Output markdown only, nothing else."
+
+
+def resolve_command(command: str) -> list[str]:
+    """The executable to run. A command line with spaces is split; a bare name is looked up on PATH the way
+    Windows does (so npm's `gemini.cmd` is found without PowerShell); a `.ps1` alone is of no use here."""
+    if " " in command.strip():
+        return [part.strip('"') for part in shlex.split(command, posix=False)]
+    found = shutil.which(command)
+    if found and found.lower().endswith(".ps1"):
+        cmd = found[:-4] + ".cmd"
+        found = cmd if os.path.isfile(cmd) else None
+    if not found and os.name == "nt":                     # npm's usual place, even when PATH lacks it in this session
+        guess = os.path.join(os.environ.get("APPDATA", ""), "npm", command + ".cmd")
+        found = guess if os.path.isfile(guess) else None
+    if not found:
+        raise FileNotFoundError(command)
+    return [found]
+
+
 def default_runner(cmd: list[str], text: str, timeout: int) -> tuple[int, str, str]:
-    import os
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}          # a Python stand-in speaks UTF-8 too
     p = subprocess.run(cmd, input=text, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, env=env)
     return p.returncode, p.stdout, p.stderr
@@ -186,19 +211,26 @@ def polish_draft(drafts, draft_id: str, model: str, instructions: str, command: 
     md, kept = to_markdown(src.get("blocks") or [])
     if not any(b.get("type") in TEXT_TYPES and b.get("type") != "divider" for b in src.get("blocks") or []):
         raise PolishError("다듬을 글이 없습니다: 문단이나 제목을 먼저 몇 줄 넣어 주세요")
-    exe = shlex.split(command, posix=False) if (" " in command.strip()) else [command]
-    exe = [part.strip('"') for part in exe]
-    cmd = [*exe, "-m", model or DEFAULT_MODEL, "-p", build_prompt(instructions)]
     try:
-        code, out, err = runner(cmd, md, timeout)
+        exe = resolve_command(command)
     except FileNotFoundError:
-        raise PolishError(f"'{command}' 명령을 찾지 못했습니다. Gemini CLI가 설치되어 PATH에 있어야 합니다 (npm i -g @google/gemini-cli, 로그인: gemini).")
+        raise PolishError(f"'{command}' 명령을 찾지 못했습니다. Gemini CLI가 설치되어 있으면 composer.config.json의 gemini.command에 "
+                          f"전체 경로를 적어 주세요 (보통 %APPDATA%\\npm\\gemini.cmd). 설치: npm i -g @google/gemini-cli, 로그인: gemini.")
+    cmd = [*exe, "-m", model or DEFAULT_MODEL, "-p", P_FLAG]
+    stdin = STDIN_HEAD + build_prompt(instructions) + STDIN_DRAFT + md
+    try:
+        code, out, err = runner(cmd, stdin, timeout)
+    except FileNotFoundError:
+        raise PolishError(f"'{exe[0]}' 을(를) 실행하지 못했습니다. Gemini CLI가 설치되어 있는지 확인해 주세요.")
     except subprocess.TimeoutExpired:
         raise PolishError(f"{timeout}초 안에 답이 오지 않았습니다. 초안을 나누거나 다시 시도해 주세요.")
     if code != 0:
         raise PolishError(f"Gemini CLI 오류 (종료 코드 {code}): {(err or out or '').strip()[-600:]}")
     if not (out or "").strip():
         raise PolishError("Gemini의 답이 비어 있습니다. 모델 이름이 맞는지, 로그인이 되어 있는지 확인해 주세요." + (f" ({err.strip()[-300:]})" if err and err.strip() else ""))
+    out = "
+".join(line for line in out.split("
+") if not line.strip().startswith("=== "))   # our own section markers, echoed
     blocks = from_markdown(out, kept)
     if not blocks:
         raise PolishError("답을 초안으로 바꾸지 못했습니다: " + out.strip()[:300])

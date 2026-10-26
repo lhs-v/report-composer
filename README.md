@@ -59,7 +59,7 @@ PowerShell에서 더블클릭 실행을 원하면 바로가기 대상에 `python
 
 재료를 대충 옮기고 하고 싶은 말만 띄엄띄엄 적어 둔 초안을, 오른쪽 위 **✨ 다듬기** 단추로 Gemini CLI에 맡겨 모든 사람이 읽을 수 있는 글로 다시 씁니다.
 
-- 필요한 것: 사내 PC에 [Gemini CLI](https://github.com/google-gemini/gemini-cli)가 설치되어 있고(`npm i -g @google/gemini-cli`) 한 번 로그인되어 있어야 합니다. 명령 이름과 기본 모델은 `composer.config.json`의 `"gemini": {"command": "gemini", "model": "gemini-3.8-flash"}`로 바꿉니다(대화상자에서도 모델을 바꿀 수 있습니다).
+- 필요한 것: 사내 PC에 [Gemini CLI](https://github.com/google-gemini/gemini-cli)가 설치되어 있고(`npm i -g @google/gemini-cli`) 한 번 로그인되어 있어야 합니다. PowerShell은 쓰지 않습니다 — 컴포저가 npm의 `gemini.cmd`를 직접 실행합니다(PATH에 없으면 `%APPDATA%\npm\gemini.cmd`도 찾아봅니다). 그래도 "명령을 찾지 못했습니다"가 나오면 `composer.config.json`의 `gemini.command`에 그 전체 경로를 적어 주세요. 명령 이름과 기본 모델은 `composer.config.json`의 `"gemini": {"command": "gemini", "model": "gemini-3.8-flash"}`로 바꿉니다(대화상자에서도 모델을 바꿀 수 있습니다).
 - 보내는 것: 초안의 **글만**(제목·문단·목록·표·강조 상자)을 마크다운으로 보냅니다. 그림·파일·영상·가로 칸은 보내지 않고 `[[B:n]]` 자리표시자로 자리만 지켜, 돌아온 글에 원래 자리대로 다시 끼웁니다. 모델이 자리표시자를 빠뜨리면 그 그림은 맨 뒤에 붙습니다(사라지지 않습니다).
 - 결과: **새 초안**("원래 제목 · 다듬음")이 생겨 바로 열리고, 원래 초안은 그대로 남습니다. 마음에 안 들면 원래 초안으로 돌아가면 됩니다.
 - 규칙(프롬프트에 포함): 사실·숫자·고유명사·파일 이름을 바꾸거나 더하지 않음, 담백한 보고체, 전문 용어는 처음 한 번 풀어 씀, 길이는 원문의 1.5배 이내. "다듬는 방향" 칸에 원하는 어투나 독자를 더 적을 수 있고, 마지막에 쓴 내용이 기억됩니다.

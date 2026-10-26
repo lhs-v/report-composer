@@ -92,14 +92,29 @@ class RunTests(unittest.TestCase):
             rough = drafts.create("주간 성과 2026-W43")
             rough["blocks"] = ROUGH[:3]
             drafts.save(rough)
-            new = polish.polish_draft(drafts, rough["id"], model="gemini-3.8-flash", instructions="모든 사람이 이해하게", command="gemini", runner=runner)
-            self.assertEqual(calls[0][0][:3], ["gemini", "-m", "gemini-3.8-flash"])
+            import sys
+            new = polish.polish_draft(drafts, rough["id"], model="gemini-3.8-flash", instructions="모든 사람이 이해하게",
+                                      command=f'"{sys.executable}" gemini', runner=runner)
+            self.assertEqual(calls[0][0][1:4], ["gemini", "-m", "gemini-3.8-flash"])
             self.assertIn("-p", calls[0][0])
-            prompt = calls[0][0][calls[0][0].index("-p") + 1]
-            self.assertIn("모든 사람이 이해하게", prompt)
-            self.assertIn("[[B:n]]", prompt)                                     # the rule about placeholders
-            self.assertIn("맵 만듬", calls[0][1])                                 # the draft text goes on stdin
+            flag = calls[0][0][calls[0][0].index("-p") + 1]
+            self.assertTrue(flag.isascii() and "\n" not in flag)                 # cmd.exe-safe: the real prompt rides on stdin
+            stdin = calls[0][1]
+            self.assertIn("모든 사람이 이해하게", stdin)
+            self.assertIn("[[B:n]]", stdin)                                      # the rule about placeholders
+            self.assertIn("맵 만듬", stdin)                                      # then the draft
+            self.assertLess(stdin.index("[[B:n]]"), stdin.index("맵 만듬"))
             self.assertEqual(new["title"], "주간 성과 2026-W43 · 다듬음")
+            echoed = polish.polish_draft(drafts, rough["id"], model="m", instructions="", command=f'"{sys.executable}" gemini',
+                                         runner=lambda c, t, to: (0, "=== 초안 (여기부터 다듬을 마크다운) ===
+
+## 제목
+
+문장.
+
+[[B:3]]
+", ""))
+            self.assertEqual([b["type"] for b in echoed["blocks"]], ["heading", "paragraph", "image"])   # a marker the model echoed is dropped
             self.assertEqual([b["type"] for b in new["blocks"]], ["heading", "paragraph", "image"])
             self.assertEqual(new["blocks"][2]["src"], ROUGH[2]["src"])
             self.assertEqual(new["polished_from"], rough["id"])
@@ -112,22 +127,23 @@ class RunTests(unittest.TestCase):
             rough = drafts.create("t")
             rough["blocks"] = ROUGH[:2]
             drafts.save(rough)
+            import sys
+            here = f'"{sys.executable}" gemini'
             with self.assertRaises(polish.PolishError) as cm:
-                polish.polish_draft(drafts, rough["id"], model="m", instructions="", command="gemini", runner=lambda c, t, to: (1, "", "model not found: m"))
+                polish.polish_draft(drafts, rough["id"], model="m", instructions="", command=here, runner=lambda c, t, to: (1, "", "model not found: m"))
             self.assertIn("model not found", str(cm.exception))
             with self.assertRaises(polish.PolishError) as cm:
-                polish.polish_draft(drafts, rough["id"], model="m", instructions="", command="gemini", runner=lambda c, t, to: (0, "   ", ""))
+                polish.polish_draft(drafts, rough["id"], model="m", instructions="", command=here, runner=lambda c, t, to: (0, "   ", ""))
             self.assertIn("비어", str(cm.exception))
-            with self.assertRaises(polish.PolishError) as cm:
-                def missing(c, t, to):
-                    raise FileNotFoundError(c[0])
-                polish.polish_draft(drafts, rough["id"], model="m", instructions="", command="gemini", runner=missing)
-            self.assertIn("gemini", str(cm.exception))
+            with self.assertRaises(polish.PolishError) as cm:                    # a bare name that is not on PATH
+                polish.polish_draft(drafts, rough["id"], model="m", instructions="", command="no-such-gemini-xyz", runner=lambda c, t, to: (0, "x", ""))
+            self.assertIn("no-such-gemini-xyz", str(cm.exception))
+            self.assertIn("gemini.command", str(cm.exception))
             with self.assertRaises(polish.PolishError):
-                polish.polish_draft(drafts, rough["id"], model="m", instructions="", command="gemini", runner=lambda c, t, to: (0, "", ""))
+                polish.polish_draft(drafts, rough["id"], model="m", instructions="", command=here, runner=lambda c, t, to: (0, "", ""))
             empty = drafts.create("빈 초안")
             with self.assertRaises(polish.PolishError) as cm:
-                polish.polish_draft(drafts, empty["id"], model="m", instructions="", command="gemini", runner=lambda c, t, to: (0, "x", ""))
+                polish.polish_draft(drafts, empty["id"], model="m", instructions="", command=here, runner=lambda c, t, to: (0, "x", ""))
             self.assertIn("글", str(cm.exception))
 
 

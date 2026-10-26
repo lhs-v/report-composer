@@ -175,7 +175,7 @@ class ServerTests(unittest.TestCase):
         fake = Path(self.tmp.name) / "fake_gemini.py"
         fake.write_text("import sys\nargs=sys.argv[1:]\nsrc=sys.stdin.read()\n"
                         "assert '-m' in args and args[args.index('-m')+1]=='gemini-test'\n"
-                        "prompt=args[args.index('-p')+1]\nassert '[[B:n]]' in prompt and '쉬운 말' in prompt\n"
+                        "prompt=args[args.index('-p')+1]\nassert prompt.isascii()\nassert '[[B:n]]' in src and '쉬운 말' in src\n"
                         "out=['## 다듬은 제목','','메모를 문장으로 풀었다.']\n"
                         "out+=[l for l in src.splitlines() if l.startswith('[[B:')]\n"
                         "print('\\n\\n'.join(out))\n", encoding="utf-8")
