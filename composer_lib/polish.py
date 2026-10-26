@@ -228,9 +228,7 @@ def polish_draft(drafts, draft_id: str, model: str, instructions: str, command: 
         raise PolishError(f"Gemini CLI 오류 (종료 코드 {code}): {(err or out or '').strip()[-600:]}")
     if not (out or "").strip():
         raise PolishError("Gemini의 답이 비어 있습니다. 모델 이름이 맞는지, 로그인이 되어 있는지 확인해 주세요." + (f" ({err.strip()[-300:]})" if err and err.strip() else ""))
-    out = "
-".join(line for line in out.split("
-") if not line.strip().startswith("=== "))   # our own section markers, echoed
+    out = "\n".join(line for line in out.split("\n") if not line.strip().startswith("=== "))   # our own section markers, echoed
     blocks = from_markdown(out, kept)
     if not blocks:
         raise PolishError("답을 초안으로 바꾸지 못했습니다: " + out.strip()[:300])

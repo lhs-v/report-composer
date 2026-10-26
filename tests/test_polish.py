@@ -106,14 +106,7 @@ class RunTests(unittest.TestCase):
             self.assertLess(stdin.index("[[B:n]]"), stdin.index("맵 만듬"))
             self.assertEqual(new["title"], "주간 성과 2026-W43 · 다듬음")
             echoed = polish.polish_draft(drafts, rough["id"], model="m", instructions="", command=f'"{sys.executable}" gemini',
-                                         runner=lambda c, t, to: (0, "=== 초안 (여기부터 다듬을 마크다운) ===
-
-## 제목
-
-문장.
-
-[[B:3]]
-", ""))
+                                         runner=lambda c, t, to: (0, "=== 초안 (여기부터 다듬을 마크다운) ===\n\n## 제목\n\n문장.\n\n[[B:3]]\n", ""))
             self.assertEqual([b["type"] for b in echoed["blocks"]], ["heading", "paragraph", "image"])   # a marker the model echoed is dropped
             self.assertEqual([b["type"] for b in new["blocks"]], ["heading", "paragraph", "image"])
             self.assertEqual(new["blocks"][2]["src"], ROUGH[2]["src"])
