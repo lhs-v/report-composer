@@ -330,7 +330,8 @@ def make_handler(app: App):
                 model = str(body.get("model") or app.cfg.gemini.model)[:80]
                 instructions = str(body.get("instructions") or "")[:4000]
                 try:
-                    new = polish_draft(app.drafts, did, model=model, instructions=instructions, command=app.cfg.gemini.command)
+                    new = polish_draft(app.drafts, did, model=model, instructions=instructions, command=app.cfg.gemini.command,
+                                       cwd=app.cfg.workspace_dir)
                 except PolishError as e:
                     return self._json(409, {"error": str(e)})
                 except Exception as e:  # noqa: BLE001

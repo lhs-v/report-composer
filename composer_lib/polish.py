@@ -195,16 +195,22 @@ def resolve_command(command: str) -> list[str]:
     return [found]
 
 
-def default_runner(cmd: list[str], text: str, timeout: int) -> tuple[int, str, str]:
-    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}          # a Python stand-in speaks UTF-8 too
-    p = subprocess.run(cmd, input=text, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, env=env)
+def default_runner(cmd: list[str], text: str, timeout: int, cwd=None) -> tuple[int, str, str]:
+    # GEMINI_CLI_TRUST_WORKSPACE: since Gemini CLI 0.39 a headless run in a folder nobody trusted exits with 55
+    # ("not running in a trusted directory"); the composer's own workspace folder is the one it runs in.
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1", "GEMINI_CLI_TRUST_WORKSPACE": "true"}
+    p = subprocess.run(cmd, input=text, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, env=env,
+                       cwd=str(cwd) if cwd else None)
     return p.returncode, p.stdout, p.stderr
 
 
-def polish_draft(drafts, draft_id: str, model: str, instructions: str, command: str = "gemini", runner=None, timeout: int = TIMEOUT) -> dict:
-    """Run the CLI on the draft's text and save the answer as a new draft `<title> · 다듬음`. Raises PolishError
-    with a message the UI can show."""
-    runner = runner or default_runner
+def polish_draft(drafts, draft_id: str, model: str, instructions: str, command: str = "gemini", runner=None, timeout: int = TIMEOUT,
+                 cwd=None) -> dict:
+    """Run the CLI on the draft's text (in `cwd`, the composer's workspace) and save the answer as a new draft
+    `<title> · 다듬음`. Raises PolishError with a message the UI can show."""
+    if runner is None:
+        import functools
+        runner = functools.partial(default_runner, cwd=cwd)
     src = drafts.get(draft_id)
     if src is None:
         raise PolishError("초안을 찾지 못했습니다")
@@ -225,7 +231,10 @@ def polish_draft(drafts, draft_id: str, model: str, instructions: str, command: 
     except subprocess.TimeoutExpired:
         raise PolishError(f"{timeout}초 안에 답이 오지 않았습니다. 초안을 나누거나 다시 시도해 주세요.")
     if code != 0:
-        raise PolishError(f"Gemini CLI 오류 (종료 코드 {code}): {(err or out or '').strip()[-600:]}")
+        tail = (err or out or "").strip()[-600:]
+        hint = ("\n폴더 신뢰 문제입니다: 컴포저는 GEMINI_CLI_TRUST_WORKSPACE=true로 실행하지만 CLI가 이를 무시하면, cmd에서 "
+                f"컴포저 작업 폴더({cwd or os.getcwd()})로 이동해 `gemini`를 한 번 띄우고 '이 폴더를 신뢰'를 고르세요." if "trusted directory" in tail else "")
+        raise PolishError(f"Gemini CLI 오류 (종료 코드 {code}): {tail}{hint}")
     if not (out or "").strip():
         raise PolishError("Gemini의 답이 비어 있습니다. 모델 이름이 맞는지, 로그인이 되어 있는지 확인해 주세요." + (f" ({err.strip()[-300:]})" if err and err.strip() else ""))
     out = "\n".join(line for line in out.split("\n") if not line.strip().startswith("=== "))   # our own section markers, echoed

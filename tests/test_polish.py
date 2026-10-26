@@ -80,6 +80,32 @@ class MarkdownRoundTrip(unittest.TestCase):
         self.assertEqual([(b["type"], b["text"]) for b in blocks], [("heading", "골격"), ("paragraph", "문장.")])
 
 
+class RunnerTests(unittest.TestCase):
+    def test_the_real_runner_trusts_the_workspace_and_runs_there(self):
+        import sys
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out, err = polish.default_runner([sys.executable, "-c", "import os,sys;print(os.environ.get('GEMINI_CLI_TRUST_WORKSPACE'), os.getcwd()); print(sys.stdin.read())"],
+                                                   "입력", 30, cwd=tmp)
+            self.assertEqual(code, 0, err)
+            self.assertIn("true", out)                                           # Gemini CLI 0.39+ would exit 55 otherwise
+            self.assertIn(Path(tmp).name, out)                                  # runs in the composer's workspace
+            self.assertIn("입력", out)
+
+    def test_a_trust_error_from_the_cli_comes_with_the_way_out(self):
+        import sys
+        with tempfile.TemporaryDirectory() as tmp:
+            drafts = Drafts(Path(tmp))
+            rough = drafts.create("t")
+            rough["blocks"] = ROUGH[:2]
+            drafts.save(rough)
+            with self.assertRaises(polish.PolishError) as cm:
+                polish.polish_draft(drafts, rough["id"], model="m", instructions="", command=f'"{sys.executable}" gemini', cwd=tmp,
+                                    runner=lambda c, t, to: (55, "", "Gemini CLI is not running in a trusted directory."))
+            self.assertIn("55", str(cm.exception))
+            self.assertIn("신뢰", str(cm.exception))
+            self.assertIn(tmp, str(cm.exception))
+
+
 class RunTests(unittest.TestCase):
     def test_polish_calls_the_cli_with_the_model_and_the_prompt_and_makes_a_new_draft(self):
         calls = []
