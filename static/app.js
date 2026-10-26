@@ -36,6 +36,7 @@
   function renderInbox(st) {
     const pending = (st.inbox || []).filter(i => !i.complete);
     const pill = $("#inboxStatus");
+    if (st.version) $("#appVersion").textContent = "v" + st.version;        // which build is running, at a glance
     pill.title = `받은편지함: ${st.config.inbox_dir}`;
     if (pending.length) {
       pill.className = "pill warn";

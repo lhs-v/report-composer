@@ -186,7 +186,7 @@
   document.addEventListener("mousemove", e => {
     const u = unitAt(e.target, e.altKey);
     if (u !== cur) setCur(u, e.altKey);
-    if (u) { tip.hidden = false; tip.className = "cp-tip" + (e.altKey ? " wide" : ""); tip.textContent = e.altKey ? `${u.label} 통째로 담기 (Alt+클릭)` : `${u.label} 담기 (클릭 · Alt: 더 넓게)`;
+    if (u) { tip.hidden = false; tip.className = "cp-tip" + (e.altKey ? " wide" : ""); tip.textContent = e.altKey ? `${u.label} 통째로 담기 (Alt+클릭)` : `${u.label} 담기 (클릭 · Alt: 더 넓게)` + (u.kind === "figure" && e.target.closest && e.target.closest("video") ? " · 멈춘 장면은 영상 위 단추로" : "");
       tip.style.left = Math.min(e.clientX + 12, innerWidth - tip.offsetWidth - 8) + "px"; tip.style.top = (e.clientY + 16) + "px"; }
     else tip.hidden = true;
   }, true);
@@ -268,6 +268,9 @@
   }
   function showFrameBtn(v) { frameVideo = v; frameBtn.textContent = `이 장면 담기 (${mmss(v.currentTime)})`; placeFrameBtn(v); }
   document.addEventListener("pause", e => { if (tagOf(e.target) === "VIDEO") showFrameBtn(e.target); }, true);
+  // hovering a video that is not playing is enough: the button sits on it until the video plays
+  document.addEventListener("mouseover", e => { const v = e.target instanceof Element ? e.target.closest("video") : null; if (v && v.paused) showFrameBtn(v); }, true);
+  document.addEventListener("timeupdate", e => { if (e.target === frameVideo && !e.target.paused) frameBtn.style.display = "none"; }, true);
   document.addEventListener("seeked", e => { if (tagOf(e.target) === "VIDEO" && e.target.paused) showFrameBtn(e.target); }, true);
   document.addEventListener("play", e => { if (e.target === frameVideo) frameBtn.style.display = "none"; }, true);
   window.addEventListener("scroll", () => { if (frameVideo && frameBtn.style.display !== "none") placeFrameBtn(frameVideo); }, true);
