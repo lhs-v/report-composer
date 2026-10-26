@@ -249,5 +249,42 @@
     post({ kind: "cp-pick", unit: u.kind, label: u.label, items });
     u.els.forEach(el => el.classList.add("cp-done"));
   }, true);
+
+  // ---------- a paused video's frame ----------
+  // Pause a video (or seek while paused) and a button appears on it: the frame on screen becomes a picture in the draft.
+  const frameBtn = document.createElement("button");
+  frameBtn.id = "cp-frame"; frameBtn.type = "button"; frameBtn.className = "cp-tip";
+  Object.assign(frameBtn.style, { position: "fixed", zIndex: 2147483647, display: "none", font: "12px 'Noto Sans KR',sans-serif", padding: "4px 10px",
+    border: "1px solid #3a5a7c", borderRadius: "6px", background: "#fff", color: "#3a5a7c", cursor: "pointer", boxShadow: "0 1px 4px rgba(0,0,0,.2)" });
+  document.documentElement.appendChild(frameBtn);
+  let frameVideo = null;
+  const mmss = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+  function placeFrameBtn(v) {
+    const r = v.getBoundingClientRect();
+    if (!r.width || r.bottom < 0 || r.top > innerHeight) { frameBtn.style.display = "none"; return; }
+    frameBtn.style.display = "block";
+    frameBtn.style.left = `${Math.max(4, r.right - frameBtn.offsetWidth - 8)}px`;
+    frameBtn.style.top = `${Math.max(4, r.top + 8)}px`;
+  }
+  function showFrameBtn(v) { frameVideo = v; frameBtn.textContent = `이 장면 담기 (${mmss(v.currentTime)})`; placeFrameBtn(v); }
+  document.addEventListener("pause", e => { if (tagOf(e.target) === "VIDEO") showFrameBtn(e.target); }, true);
+  document.addEventListener("seeked", e => { if (tagOf(e.target) === "VIDEO" && e.target.paused) showFrameBtn(e.target); }, true);
+  document.addEventListener("play", e => { if (e.target === frameVideo) frameBtn.style.display = "none"; }, true);
+  window.addEventListener("scroll", () => { if (frameVideo && frameBtn.style.display !== "none") placeFrameBtn(frameVideo); }, true);
+  frameBtn.addEventListener("click", e => {
+    e.preventDefault(); e.stopPropagation();
+    const v = frameVideo;
+    if (!v || !v.videoWidth) { frameBtn.textContent = "영상이 아직 안 떴습니다"; return; }
+    try {
+      const c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight;
+      c.getContext("2d").drawImage(v, 0, 0);
+      const data = c.toDataURL("image/png");
+      const file = (v.getAttribute("src") || v.querySelector("source")?.getAttribute("src") || "video").split("/").pop().replace(/\.720p\.mp4$|\.\w+$/, "");
+      let cap = ""; try { cap = v.parentElement ? captionOf(v.parentElement, v) : ""; } catch { cap = ""; }
+      const caption = `${cap || file} · ${mmss(v.currentTime)}`;
+      post({ kind: "cp-pick", unit: "frame", label: `장면 ${mmss(v.currentTime)}`, items: [{ t: "image", data, caption }] });
+      frameBtn.textContent = "담았습니다 ✓"; setTimeout(() => { if (frameVideo === v && v.paused) showFrameBtn(v); }, 1200);
+    } catch (err) { frameBtn.textContent = "담지 못했습니다 (" + ((err && err.name) || "오류") + ")"; }
+  }, true);
   post({ kind: "cp-ready" });
 })();

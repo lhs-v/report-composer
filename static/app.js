@@ -162,7 +162,8 @@
     const mediaHtml = files => files.map(f => {
       const ext = f.src.split(".").pop().toLowerCase();
       const tag = ["mp4", "webm", "mov"].includes(ext) ? "video" : ["mp3", "wav", "ogg", "m4a"].includes(ext) ? "audio" : null;
-      return tag ? `<div class="media"><${tag} controls preload="metadata" src="/files/${esc(f.src)}"></${tag}><div class="cap">${esc(f.caption)} <button class="chip" data-add="${esc(f.id)}">${used.has(f.id) ? "첨부됨 ✓" : "첨부로 추가 ＋"}</button></div></div>` : "";
+      const frame = tag === "video" ? `<button class="chip" data-frame="${esc(f.id)}" title="멈춘 장면을 그림으로 초안에 담기">📷 이 장면 담기</button>` : "";
+      return tag ? `<div class="media"><${tag} controls preload="metadata" src="/files/${esc(f.src)}"></${tag}><div class="cap">${esc(f.caption)} <button class="chip" data-add="${esc(f.id)}">${used.has(f.id) ? "첨부됨 ✓" : "첨부로 추가 ＋"}</button>${frame}</div></div>` : "";
     }).join("");
     const mdFullHtml = m => `<details class="md"><summary>md 전문 (${esc(m.caption)}) <button class="chip" data-add="${esc(m.id)}">전체 ＋</button></summary><pre>${esc(m.text)}</pre></details>`;
     const fig = i => elm(i, `<figure><img src="/files/${esc(i.src)}" alt=""><figcaption>${esc(i.caption)}</figcaption></figure>`, "fig");
@@ -265,6 +266,7 @@
     el.innerHTML = parts.join("");
     wireFolds(el);
     $$("#reader [data-add]", el).forEach(b => b.onclick = e => { e.stopPropagation(); e.preventDefault(); addFromLibrary(b.dataset.add); });
+    $$("#reader [data-frame]", el).forEach(b => b.onclick = e => { e.stopPropagation(); e.preventDefault(); captureFrame(b); });
     $$("#reader [data-view]", el).forEach(b => b.onclick = e => { e.stopPropagation(); e.preventDefault(); openPageViewer(b.dataset.view, b.dataset.title); });
     $$("#reader [data-stream].addAll", el).forEach(b => b.onclick = e => { e.stopPropagation(); e.preventDefault(); addStream(b.dataset.stream); });
   }
@@ -367,6 +369,25 @@
       $("#editor").lastElementChild?.scrollIntoView({ block: "nearest" });
     } catch (err) { toast("가져오기 실패: " + esc(err.message)); }
   });
+
+  // the frame a reader-tab video is paused on, as a picture in the draft
+  async function captureFrame(btn) {
+    const v = btn.closest(".media")?.querySelector("video"), f = findLib(btn.dataset.frame);
+    if (!v || !f) return;
+    if (!state.draft) { toast("먼저 초안을 고르거나 만드세요."); return; }
+    if (!v.videoWidth || v.readyState < 2) { toast("영상을 재생해 원하는 장면에서 멈춘 뒤 누르세요."); return; }
+    const t = v.currentTime, mmss = `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+    try {
+      const c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight;
+      c.getContext("2d").drawImage(v, 0, 0);
+      const week = f.src.split("/")[0];
+      const res = await api("/api/pick-image", { method: "POST", body: { week, data: c.toDataURL("image/png"), name: `${f.caption} ${mmss}` } });
+      state.draft.blocks.push({ id: uid(), type: "image", src: res.src, caption: `${f.caption} · ${mmss}`, source_ref: `frame:${f.id}@${Math.round(t)}` });
+      lastPick = [state.draft.blocks.at(-1).id];
+      commit(); renderEditor(); renderPickCount(); toast(`장면 ${mmss} 담았습니다.`, 1200);
+      $("#editor").lastElementChild?.scrollIntoView({ block: "nearest" });
+    } catch (err) { toast("장면을 담지 못했습니다: " + esc(err.message)); }
+  }
 
   function findLib(id) {
     for (const w of state.library) {
