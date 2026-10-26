@@ -200,6 +200,8 @@ class ServerTests(unittest.TestCase):
         self.assertIn("no-such-gemini-cli", err["error"])
         status, _ = self.req("/api/polish", "POST", {"draft_id": "nope"})
         self.assertEqual(status, 400)
+        status, _ = self.req("/api/polish", "POST", {"draft_id": d["id"], "style": "shouting"})
+        self.assertEqual(status, 400)
 
     def test_state_tells_the_running_version_and_the_one_on_disk(self):
         from composer_lib import __version__

@@ -80,6 +80,31 @@ class MarkdownRoundTrip(unittest.TestCase):
         self.assertEqual([(b["type"], b["text"]) for b in blocks], [("heading", "골격"), ("paragraph", "문장.")])
 
 
+class StyleTests(unittest.TestCase):
+    def test_the_prompt_carries_the_chosen_style_and_defaults_to_polite(self):
+        self.assertIn("~했습니다", polish.build_prompt(""))                      # the default: a polite report voice
+        self.assertNotIn("~했다/~이다", polish.build_prompt(""))
+        self.assertIn("~함/~완료", polish.build_prompt("", style="brief"))
+        self.assertIn("~했다/~이다", polish.build_prompt("", style="plain"))
+        self.assertIn("~했습니다", polish.build_prompt("", style="nonsense"))     # unknown: the default
+
+    def test_polish_draft_passes_the_style_and_records_it(self):
+        import sys
+        seen = {}
+
+        def runner(cmd, text, timeout):
+            seen["stdin"] = text
+            return 0, "문장입니다.\n", ""
+        with tempfile.TemporaryDirectory() as tmp:
+            drafts = Drafts(Path(tmp))
+            rough = drafts.create("t")
+            rough["blocks"] = ROUGH[:2]
+            drafts.save(rough)
+            new = polish.polish_draft(drafts, rough["id"], model="m", instructions="", command=f'"{sys.executable}" gemini', runner=runner, style="brief")
+            self.assertIn("개조식", seen["stdin"])
+            self.assertEqual(new["polish"]["style"], "brief")
+
+
 class RunnerTests(unittest.TestCase):
     def test_the_real_runner_trusts_the_workspace_and_runs_there(self):
         import sys

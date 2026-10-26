@@ -31,6 +31,13 @@
     <p class="muted small">지금 초안의 <b>글(제목·문단·목록·표·강조 상자)</b>만 Gemini CLI로 보내 다시 씁니다. 그림·파일·영상은 보내지 않고 자리만 지킵니다.
       결과는 <b>새 초안</b>("… · 다듬음")으로 생기고, 지금 초안은 그대로 남습니다.</p>
     <label>모델 <input id="polishModel" placeholder="gemini-3.8-flash"></label>
+    <label>문체
+      <select id="polishStyle">
+        <option value="polite">정중한 보고체 (~했습니다 / ~입니다)</option>
+        <option value="brief">개조식 (~함 / ~완료 / ~예정)</option>
+        <option value="plain">평서체 (~했다 / ~이다)</option>
+      </select>
+    </label>
     <label>다듬는 방향
       <textarea id="polishInstructions" rows="4"></textarea>
     </label>

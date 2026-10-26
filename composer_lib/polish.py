@@ -157,7 +157,15 @@ def from_markdown(text: str, kept: dict[str, dict]) -> list[dict]:
     return blocks
 
 
-def build_prompt(instructions: str) -> str:
+STYLES = {
+    "polite": "정중한 보고체(~했습니다/~입니다). 문장은 완전한 문장으로 쓴다.",
+    "brief": "개조식(명사형 종결: ~함/~완료/~예정). 한 줄에 한 사실, 조사와 군더더기를 줄인다. 제목·목록 위주로 짧게.",
+    "plain": "담백한 평서체(~했다/~이다).",
+}
+DEFAULT_STYLE = "polite"
+
+
+def build_prompt(instructions: str, style: str = DEFAULT_STYLE) -> str:
     return (
         "너는 주간 업무 보고서를 다듬는 편집자다. 표준 입력으로 받은 마크다운 초안을 아래 규칙대로 다시 써서 **마크다운만** 출력하라. "
         "설명이나 서문, 코드 펜스는 붙이지 않는다.\n\n"
@@ -166,7 +174,7 @@ def build_prompt(instructions: str) -> str:
         "2. `[[B:n]]` 꼴의 자리표시자 줄은 그림·파일·표 배치다. 글자 하나 바꾸지 말고 **같은 순서로, 각각 한 줄에 그대로** 남겨라. 빼거나 합치지 않는다.\n"
         "3. 제목은 `##`/`###`, 목록은 `- `, 표는 마크다운 표, 강조 상자는 `> ` 인용으로 쓴다. 다른 서식은 쓰지 않는다.\n"
         "4. 한국어로 쓴다. 영어 고유명사·코드 식별자는 원문 그대로 둔다.\n"
-        "5. 문체: 담백한 보고체(~했다/~이다). 느낌표·이모지 없음.\n\n"
+        f"5. 문체: {STYLES.get(style, STYLES[DEFAULT_STYLE])} 느낌표·이모지 없음.\n\n"
         f"다듬는 방향: {instructions.strip() or DEFAULT_INSTRUCTIONS}\n"
     )
 
@@ -205,7 +213,7 @@ def default_runner(cmd: list[str], text: str, timeout: int, cwd=None) -> tuple[i
 
 
 def polish_draft(drafts, draft_id: str, model: str, instructions: str, command: str = "gemini", runner=None, timeout: int = TIMEOUT,
-                 cwd=None) -> dict:
+                 cwd=None, style: str = DEFAULT_STYLE) -> dict:
     """Run the CLI on the draft's text (in `cwd`, the composer's workspace) and save the answer as a new draft
     `<title> · 다듬음`. Raises PolishError with a message the UI can show."""
     if runner is None:
@@ -223,7 +231,7 @@ def polish_draft(drafts, draft_id: str, model: str, instructions: str, command: 
         raise PolishError(f"'{command}' 명령을 찾지 못했습니다. Gemini CLI가 설치되어 있으면 composer.config.json의 gemini.command에 "
                           f"전체 경로를 적어 주세요 (보통 %APPDATA%\\npm\\gemini.cmd). 설치: npm i -g @google/gemini-cli, 로그인: gemini.")
     cmd = [*exe, "-m", model or DEFAULT_MODEL, "-p", P_FLAG]
-    stdin = STDIN_HEAD + build_prompt(instructions) + STDIN_DRAFT + md
+    stdin = STDIN_HEAD + build_prompt(instructions, style) + STDIN_DRAFT + md
     try:
         code, out, err = runner(cmd, stdin, timeout)
     except FileNotFoundError:
@@ -244,5 +252,5 @@ def polish_draft(drafts, draft_id: str, model: str, instructions: str, command: 
     new = drafts.create(f"{src.get('title', '')} · 다듬음")
     new["blocks"] = blocks
     new["polished_from"] = draft_id
-    new["polish"] = {"model": model or DEFAULT_MODEL, "instructions": instructions, "at": new["created"]}
+    new["polish"] = {"model": model or DEFAULT_MODEL, "instructions": instructions, "style": style, "at": new["created"]}
     return drafts.save(new)

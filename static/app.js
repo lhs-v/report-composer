@@ -460,17 +460,18 @@
     const g = st.gemini || {};
     $("#polishModel").value = localStorage.getItem("cp.polish.model") || g.model || "gemini-3.8-flash";
     $("#polishInstructions").value = localStorage.getItem("cp.polish.instructions") || POLISH_DEFAULT;
+    $("#polishStyle").value = localStorage.getItem("cp.polish.style") || "polite";
     $("#polishError").textContent = ""; $("#polishState").textContent = `명령: ${g.command || "gemini"} · 초안 블록 ${state.draft.blocks.length}개`;
     $("#polishRun").disabled = false;
     $("#polishDlg").showModal();
   }
   async function runPolish() {
-    const model = $("#polishModel").value.trim(), instructions = $("#polishInstructions").value.trim();
-    localStorage.setItem("cp.polish.model", model); localStorage.setItem("cp.polish.instructions", instructions);
+    const model = $("#polishModel").value.trim(), instructions = $("#polishInstructions").value.trim(), style = $("#polishStyle").value;
+    localStorage.setItem("cp.polish.model", model); localStorage.setItem("cp.polish.instructions", instructions); localStorage.setItem("cp.polish.style", style);
     $("#polishError").textContent = ""; $("#polishRun").disabled = true;
     $("#polishState").textContent = "Gemini가 다듬는 중… (보통 10~60초)";
     try {
-      const res = await api("/api/polish", { method: "POST", body: { draft_id: state.draft.id, model, instructions } });
+      const res = await api("/api/polish", { method: "POST", body: { draft_id: state.draft.id, model, instructions, style } });
       $("#polishDlg").close();
       await refreshDrafts(); await openDraft(res.draft.id);
       toast(`다듬은 초안을 열었습니다: ${esc(res.draft.title)} (원래 초안은 그대로 있습니다)`, 3000);

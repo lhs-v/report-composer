@@ -329,9 +329,12 @@ def make_handler(app: App):
                     return self._json(400, {"error": "draft_id"})
                 model = str(body.get("model") or app.cfg.gemini.model)[:80]
                 instructions = str(body.get("instructions") or "")[:4000]
+                style = str(body.get("style") or "polite")
+                if style not in ("polite", "brief", "plain"):
+                    return self._json(400, {"error": "style"})
                 try:
                     new = polish_draft(app.drafts, did, model=model, instructions=instructions, command=app.cfg.gemini.command,
-                                       cwd=app.cfg.workspace_dir)
+                                       cwd=app.cfg.workspace_dir, style=style)
                 except PolishError as e:
                     return self._json(409, {"error": str(e)})
                 except Exception as e:  # noqa: BLE001

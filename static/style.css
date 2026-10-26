@@ -212,3 +212,4 @@ details.pfiles > summary, details.excerptFold > summary { cursor: pointer; color
 button.accent { background: #3a5a7c; color: #fff; border-color: #3a5a7c; }
 
 #appVersion.stale { color: #a8512b; font-weight: 600; }
+#polishDlg select { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 4px 6px; }
