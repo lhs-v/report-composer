@@ -2,8 +2,9 @@
 come can be read at once), move it to done/, and remember in weeks/<week>/.inbox.json which parts have been seen so
 the missing ones stay visible until they come.
 
-File names come from the server's mail.py: <week>.zip (full), <week>-light.zip, <week>-part<i>of<n>.zip.
-Every member path starts with "<week>/", so merging is plain overwrite into one folder.
+File names come from the server's mail.py: <week>.zip (full), <week>-light.zip, <week>-part<i>of<n>.zip; a later
+round of the same week is <week>-r<k>-… and its members start with "<week>-r<k>/". Every round merges by plain
+overwrite into the one week folder; each round waits on its own parts.
 """
 from __future__ import annotations
 
@@ -14,12 +15,13 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-NAME_RE = re.compile(r"^(?P<week>\d{4}-W\d{2})(?:-(?P<kind>light|part(?P<i>\d+)of(?P<n>\d+)))?\.zip$")
+NAME_RE = re.compile(r"^(?P<week>\d{4}-W\d{2})(?:-r(?P<r>\d+))?(?:-(?P<kind>light|part(?P<i>\d+)of(?P<n>\d+)))?\.zip$")
 
 
 @dataclass
 class InboxState:
     week: str
+    round: int = 1
     full: Path | None = None
     light: Path | None = None
     parts: dict[int, Path] = field(default_factory=dict)
@@ -49,13 +51,21 @@ class InboxState:
         out += [self.parts[i] for i in sorted(self.parts)]
         return out
 
+    @property
+    def key(self) -> str:
+        return self.week if self.round == 1 else f"{self.week}-r{self.round}"
+
+    @property
+    def prefixes(self) -> tuple[str, ...]:
+        return (self.week, f"{self.week}-r{self.round}")
+
     def summary(self) -> dict:
-        return {"week": self.week, "complete": self.complete, "has_full": self.full is not None or self.extracted_full,
+        return {"week": self.week, "round": self.round, "key": self.key, "complete": self.complete, "has_full": self.full is not None or self.extracted_full,
                 "has_light": self.light is not None, "parts": sorted(self.have), "n_parts": self.n_parts, "missing_parts": self.missing_parts}
 
 
-def _marker(workspace_dir: Path, week: str) -> Path:
-    return Path(workspace_dir) / "weeks" / week / ".inbox.json"
+def _marker(workspace_dir: Path, week: str, round: int = 1) -> Path:
+    return Path(workspace_dir) / "weeks" / week / (".inbox.json" if round == 1 else f".inbox-r{round}.json")
 
 
 def _read_marker(path: Path) -> dict:
@@ -76,7 +86,9 @@ def scan(inbox_dir: Path, workspace_dir: Path | None = None) -> dict[str, InboxS
             m = NAME_RE.match(p.name)
             if not m:
                 continue
-            st = states.setdefault(m["week"], InboxState(week=m["week"]))
+            rnd = int(m["r"]) if m["r"] else 1
+            key = m["week"] if rnd == 1 else f"{m['week']}-r{rnd}"
+            st = states.setdefault(key, InboxState(week=m["week"], round=rnd))
             kind = m["kind"]
             if kind is None:
                 st.full = p
@@ -86,20 +98,24 @@ def scan(inbox_dir: Path, workspace_dir: Path | None = None) -> dict[str, InboxS
                 st.parts[int(m["i"])] = p
                 st.n_parts = int(m["n"])
     if workspace_dir is not None and (Path(workspace_dir) / "weeks").is_dir():
-        for marker in sorted((Path(workspace_dir) / "weeks").glob("*/.inbox.json")):
+        for marker in sorted((Path(workspace_dir) / "weeks").glob("*/.inbox*.json")):
             week = marker.parent.name
+            m = re.fullmatch(r"\.inbox(?:-r(\d+))?\.json", marker.name)
+            rnd = int(m.group(1)) if m and m.group(1) else 1
+            key = week if rnd == 1 else f"{week}-r{rnd}"
             data = _read_marker(marker)
-            st = states.get(week) or InboxState(week=week)
+            st = states.get(key) or InboxState(week=week, round=rnd)
             st.extracted |= {int(i) for i in data.get("parts") or [] if str(i).isdigit()}
             st.extracted_full = st.extracted_full or bool(data.get("full"))
             if st.n_parts is None and isinstance(data.get("n_parts"), int):
                 st.n_parts = data["n_parts"]
-            if week in states or not st.complete:
-                states[week] = st
+            if key in states or not st.complete:
+                states[key] = st
     return states
 
 
-def _safe_extract(zip_path: Path, week: str, target: Path) -> None:
+def _safe_extract(zip_path: Path, week: str | tuple[str, ...], target: Path) -> None:
+    prefixes = (week,) if isinstance(week, str) else tuple(week)
     target.mkdir(parents=True, exist_ok=True)
     root = target.resolve()
     with zipfile.ZipFile(zip_path) as z:
@@ -108,7 +124,7 @@ def _safe_extract(zip_path: Path, week: str, target: Path) -> None:
                 continue
             rel = PurePosixPath(info.filename.replace("\\", "/"))
             parts = rel.parts
-            if parts and parts[0] == week:
+            if parts and parts[0] in prefixes:
                 parts = parts[1:]
             if not parts or any(p in ("..", "") for p in parts) or PurePosixPath(*parts).is_absolute():
                 raise ValueError(f"unsafe zip member: {info.filename}")
@@ -124,13 +140,13 @@ def extract_week(state: InboxState, workspace_dir: Path) -> Path:
     """Extract the zips the state holds into weeks/<week>/, move them to done/, and note what has been seen."""
     target = Path(workspace_dir) / "weeks" / state.week
     for zp in state.zips():
-        _safe_extract(zp, state.week, target)
+        _safe_extract(zp, state.prefixes, target)
     if state.zips():
         done = state.zips()[0].parent / "done"
         done.mkdir(exist_ok=True)
         for zp in state.zips():
             shutil.move(str(zp), str(done / zp.name))
-    marker = _marker(workspace_dir, state.week)
+    marker = _marker(workspace_dir, state.week, state.round)
     old = _read_marker(marker) if marker.is_file() else {}
     seen = sorted({int(i) for i in old.get("parts") or [] if str(i).isdigit()} | set(state.parts) | set(state.extracted))
     marker.parent.mkdir(parents=True, exist_ok=True)
@@ -142,9 +158,10 @@ def extract_week(state: InboxState, workspace_dir: Path) -> Path:
 
 def process_once(inbox_dir: Path, workspace_dir: Path) -> list[str]:
     """Extract whatever zips the inbox holds, week by week, complete or not. Returns the weeks touched (sorted)."""
-    extracted = []
-    for week, state in sorted(scan(inbox_dir, workspace_dir).items()):
+    extracted: list[str] = []
+    for _key, state in sorted(scan(inbox_dir, workspace_dir).items()):
         if state.zips():
             extract_week(state, workspace_dir)
-            extracted.append(week)
+            if state.week not in extracted:
+                extracted.append(state.week)
     return extracted

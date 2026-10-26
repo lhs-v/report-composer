@@ -70,6 +70,30 @@ class InboxTests(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in (self.inbox / "done").iterdir()),
                          ["2026-W42-light.zip", "2026-W42-part1of3.zip", "2026-W42-part2of3.zip", "2026-W42-part3of3.zip"])
 
+    def test_a_later_round_merges_into_the_same_week_and_waits_on_its_own_parts(self):
+        """`<week>-r2-…zip` is round 2 of the same week: it lands in the same folder, its missing parts are counted
+        apart from round 1's, and nothing of round 1 is forgotten."""
+        make_zip(self.inbox / "2026-W42-light.zip", {"2026-W42/outcomes.json": b"{}"})
+        make_zip(self.inbox / "2026-W42-part1of1.zip", {"2026-W42/records/a/R-1/x.txt": b"x"})
+        process_once(self.inbox, self.ws)
+        self.assertEqual(scan(self.inbox, self.ws), {})
+        make_zip(self.inbox / "2026-W42-r2-light.zip", {"2026-W42-r2/outcomes.json": b'{"round": 2}'})
+        make_zip(self.inbox / "2026-W42-r2-part1of2.zip", {"2026-W42-r2/records/a/R-2/y.txt": b"y"})
+        self.assertEqual(process_once(self.inbox, self.ws), ["2026-W42"])
+        self.assertEqual((self.ws / "weeks" / "2026-W42" / "records" / "a" / "R-2" / "y.txt").read_bytes(), b"y")      # same week folder
+        self.assertEqual((self.ws / "weeks" / "2026-W42" / "records" / "a" / "R-1" / "x.txt").read_bytes(), b"x")      # round 1 kept
+        self.assertEqual((self.ws / "weeks" / "2026-W42" / "outcomes.json").read_bytes(), b'{"round": 2}')         # the newest list wins
+        states = scan(self.inbox, self.ws)
+        self.assertEqual(list(states), ["2026-W42-r2"])
+        self.assertEqual((states["2026-W42-r2"].week, states["2026-W42-r2"].round), ("2026-W42", 2))
+        self.assertEqual(states["2026-W42-r2"].missing_parts, [2])
+        self.assertEqual(states["2026-W42-r2"].summary()["round"], 2)
+        make_zip(self.inbox / "2026-W42-r2-part2of2.zip", {"2026-W42-r2/records/a/R-3/z.txt": b"z"})
+        process_once(self.inbox, self.ws)
+        self.assertEqual(scan(self.inbox, self.ws), {})
+        self.assertEqual(sorted(p.name for p in (self.inbox / "done").iterdir())[-3:],
+                         ["2026-W42-r2-light.zip", "2026-W42-r2-part1of2.zip", "2026-W42-r2-part2of2.zip"])
+
     def test_zip_slip_is_rejected(self):
         make_zip(self.inbox / "2026-W40.zip", {"2026-W40/../../evil.txt": b"x"})
         with self.assertRaises(ValueError):

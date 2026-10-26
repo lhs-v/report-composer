@@ -39,7 +39,7 @@
     pill.title = `받은편지함: ${st.config.inbox_dir}`;
     if (pending.length) {
       pill.className = "pill warn";
-      pill.textContent = pending.map(i => `${i.week} 자료 ${i.parts.length}/${i.n_parts ?? "?"} 대기 중`).join(" · ");
+      pill.textContent = pending.map(i => `${i.week}${i.round > 1 ? ` 추가 r${i.round}` : ""} 자료 ${i.parts.length}/${i.n_parts ?? "?"} 대기 중`).join(" · ");
     } else { pill.className = "pill"; pill.textContent = `주차 ${st.weeks.length}개 · 받은편지함 비어 있음`; }
     $("#inboxHint").textContent = st.inbox_status?.error ? `받은편지함 오류: ${st.inbox_status.error}` :
       `메일에서 받은 zip을 ${st.config.inbox_dir} 에 넣으면 3초 안에 자동으로 풀립니다. 마지막 확인 ${st.inbox_status?.checked ?? "-"}.`;
