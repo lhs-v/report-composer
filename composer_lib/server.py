@@ -128,6 +128,19 @@ def wrap_page(fragment: str, base_href: str) -> str:
             f"{body}{picker}</body></html>")
 
 
+_HOME_REF = re.compile(r"""(?P<q>["'])home:(?P<name>[^"']+?)\.(?:mp4|webm|mov)(?P=q)""")
+
+
+def substitute_copies(html: str, folder: Path) -> str:
+    """Packages before 2026-10-26 pointed a page's video at `home:<name>.mp4` even when `<name>.720p.mp4` came
+    along: open the copy where it exists."""
+    def swap(m: re.Match) -> str:
+        q, name = m.group("q"), m.group("name")
+        copy = f"{name}.720p.mp4"
+        return f"{q}{copy}{q}" if (folder / copy).is_file() else m.group(0)
+    return _HOME_REF.sub(swap, html)
+
+
 def _safe_child(base: Path, rel: str) -> Path | None:
     rel = urllib.parse.unquote(rel)
     if "\x00" in rel or rel.startswith(("/", "\\")) or ".." in rel.replace("\\", "/").split("/"):
@@ -237,7 +250,8 @@ def make_handler(app: App):
                 f = _safe_child(app.weeks_dir, rel)
                 if not f or f.suffix.lower() not in (".html", ".htm"):
                     return self._send(404, "not found", "text/plain")
-                return self._send(200, wrap_page(f.read_text(encoding="utf-8", errors="replace"), "/files/" + urllib.parse.unquote(rel).rsplit("/", 1)[0] + "/"))
+                html = substitute_copies(f.read_text(encoding="utf-8", errors="replace"), f.parent)
+                return self._send(200, wrap_page(html, "/files/" + urllib.parse.unquote(rel).rsplit("/", 1)[0] + "/"))
             if p == "/api/state":
                 return self._json(200, {**app.state(), "page_origin": f"http://{self._origins()[1]}"})
             if p == "/api/library":

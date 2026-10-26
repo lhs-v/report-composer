@@ -170,6 +170,20 @@ class ServerTests(unittest.TestCase):
         self.assertIn("<h2>결과</h2>", text)
         self.assertEqual(self.req("/page/2026-W42/../x.html")[0], 404)
 
+    def test_a_page_opens_the_720p_copy_where_an_older_package_pointed_home(self):
+        from composer_lib.server import substitute_copies
+        w = self.cfg.workspace_dir / "weeks" / "2026-W42" / "records" / "alpha" / "R-1"
+        w.mkdir(parents=True, exist_ok=True)
+        (w / "v.720p.mp4").write_bytes(b"720p")
+        (w / "index.html").write_text("<title>영상 페이지</title><video src=\"home:v.mp4\"></video><a href='home:w.mp4'>w</a><img src=\"home:p.png\">", encoding="utf-8")
+        status, body = self.req("/page/2026-W42/records/alpha/R-1/index.html")
+        self.assertEqual(status, 200)
+        text = body.decode("utf-8")
+        self.assertIn('src="v.720p.mp4"', text)                                 # the copy that came along
+        self.assertIn("href='home:w.mp4'", text)                                # no copy: still said to be home
+        self.assertIn('src="home:p.png"', text)                                 # only videos have copies
+        self.assertEqual(substitute_copies('<video src="home:x.mp4">', w), '<video src="home:x.mp4">')
+
     def test_pick_image_saves_data_uri_under_the_week_and_returns_a_src(self):
         import base64
         uri = "data:image/png;base64," + base64.b64encode(b"PNG picked").decode()
