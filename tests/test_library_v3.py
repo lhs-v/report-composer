@@ -42,7 +42,7 @@ OUTCOMES_V3 = {
         rec(R_PAGE, "page", "등급 영상 페이지", [f("index.html", "core", 1000, R_PAGE), f("a.png", "support", 500, R_PAGE),
                                                 f("b.mp4", "support", 5000, home=True), f("preview-top.png", "derived", 200, R_PAGE)],
             chapter=C1, why="정리 단위 인용", representative=f"records/sp-mobile/{R_PAGE}/preview-top.png", href=f"records/sp-mobile/{R_PAGE}/index.html"),
-        rec(R_FIG, "figure", "결과 그림", [f("fig.png", "core", 300, R_FIG)], href=f"records/sp-mobile/{R_FIG}/fig.png",
+        rec(R_FIG, "figure", "결과 그림", [f("fig.png", "core", 300, R_FIG), f("gallery.png", "core", 400, R_FIG)], href=f"records/sp-mobile/{R_FIG}/fig.png",
             representative=f"records/sp-mobile/{R_FIG}/fig.png"),
         rec(R_VID, "video", "시연 영상", [f("v.mp4", "core", 4000, home=True), f("v.poster.jpg", "derived", 100, R_VID), f("v.720p.mp4", "derived", 800, R_VID)],
             video="720p", representative=f"records/sp-mobile/{R_VID}/v.poster.jpg", href=f"records/sp-mobile/{R_VID}/v.720p.mp4"),
@@ -110,6 +110,9 @@ class V3Tests(V3Fixture):
         loose = [b for b in p["blocks"] if not b.get("role")]
         ids = {b["id"] for b in loose}
         self.assertIn(f"{WEEK}:sp-mobile:loose:{R_FIG}:image:0", ids)
+        gallery = next(b for b in loose if b["id"] == f"{WEEK}:sp-mobile:loose:{R_FIG}:image:1")
+        self.assertFalse(gallery.get("in_page"))                                     # a second core picture stands beside the first
+        self.assertFalse(gallery.get("optional"))
         self.assertIn(f"{WEEK}:sp-mobile:loose:{R_VID}:image:0", ids)              # the poster
         self.assertIn(f"{WEEK}:sp-mobile:loose:{R_VID}:file:0", ids)               # the 720p copy is the file to open
         self.assertNotIn(R_HIDDEN, json.dumps(loose))                               # sent: none → nothing to pick
@@ -134,7 +137,7 @@ class V3Tests(V3Fixture):
         import shutil
         shutil.rmtree(self.week_dir / "records" / "sp-mobile" / R_FIG)                # that part never came
         after = {b["id"] for s in self.project()["streams"] for b in s["blocks"]} | {b["id"] for b in self.project()["blocks"]}
-        self.assertEqual(before - after, {f"{WEEK}:sp-mobile:loose:{R_FIG}:image:0"})
+        self.assertEqual(before - after, {f"{WEEK}:sp-mobile:loose:{R_FIG}:image:0", f"{WEEK}:sp-mobile:loose:{R_FIG}:image:1"})
         self.assertIn(R_FIG, [m["id"] for m in self.entry()["missing"]])
 
     def test_a_week_before_its_weekly_run_shows_the_records_under_the_one_line(self):

@@ -325,7 +325,12 @@ def _record_blocks(weeks_dir: Path, week_dir: Path, r: dict, prefix: str, meta: 
         p = _pkg_file(week_dir, fl["href"])
         if not p or p in (rep, main) or p.name in THUMB_NAMES or p.name.endswith(".poster.jpg"):
             continue
-        blocks.append(_asset_block(weeks_dir, p, bid(_kind_of(p)), caption=f"{title} · {p.name}", in_page=True, optional=True, **rmeta))
+        role = next((fl.get("role") for fl in r.get("files") or [] if isinstance(fl, dict) and fl.get("href") == str(p.relative_to(week_dir).as_posix()) or
+                     (isinstance(fl, dict) and fl.get("href") and _pkg_file(week_dir, fl["href"]) == p)), None)
+        if role == "core":                       # a second core file (a figure's gallery beside its map) is not a page file
+            blocks.append(_asset_block(weeks_dir, p, bid(_kind_of(p)), caption=f"{title} · {p.name}", **rmeta))
+        else:
+            blocks.append(_asset_block(weeks_dir, p, bid(_kind_of(p)), caption=f"{title} · {p.name}", in_page=True, optional=True, **rmeta))
     return blocks
 
 
