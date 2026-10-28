@@ -491,6 +491,7 @@
   async function openDraft(id) {
     state.draft = await api(`/api/drafts/${id}`); state.history = []; state.future = [];
     $("#draftTitle").value = state.draft.title; renderEditor(); renderLibrary(); renderDraftSelect();
+    window.Composer?.route?.(state.draft);
   }
   async function newDraft(title) { const d = await api("/api/drafts", { method: "POST", body: { title } }); await refreshDrafts(); await openDraft(d.id); }
   function commit() {

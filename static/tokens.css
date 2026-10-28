@@ -1,0 +1,43 @@
+/* Design tokens shared with the home server's work log: paper background, calm ink, one blue accent.
+   Local font stacks only (no web fonts: the app runs on a company network). */
+:root {
+  --bg: #f7f3ec;
+  --surface: #fffdf9;
+  --fg: #221f1a;
+  --muted: #6f685d;
+  --line: #e3dccf;
+  --accent: #3a5a7c;
+  --accent-soft: #e7eef5;
+  --mark: #a8512b;
+  --ok: #2e7d4f;
+
+  --font-body: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-display: "Noto Serif KR", "Apple SD Gothic Neo", "Malgun Gothic", Georgia, serif;
+  --font-mono: "IBM Plex Mono", Consolas, "D2Coding", monospace;
+
+  --ease-out: cubic-bezier(.05, .7, .1, 1);
+  --t-tap: 120ms;
+  --t-move: 200ms;
+  --t-flash: 120ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1915;
+    --surface: #23201b;
+    --fg: #ebe5da;
+    --muted: #a39b8d;
+    --line: #37322a;
+    --accent: #9ab8d6;
+    --accent-soft: #2a3542;
+    --mark: #d9906b;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-tap: 0ms;
+    --t-move: 0ms;
+    --t-flash: 0ms;
+  }
+}

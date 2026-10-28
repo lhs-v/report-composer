@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Report Composer</title>
+<link rel="stylesheet" href="/static/tokens.css">
 <link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/tree.css">
 </head>
 <body>
 <header class="top">
@@ -15,6 +17,7 @@
     <select id="draftSelect"></select>
   </label>
   <button id="newDraft" title="새 초안">＋ 새 초안</button>
+  <button id="newTree" title="이번 주 패키지로 초안 트리를 만듭니다">＋ 이번 주 초안</button>
   <button id="dupDraft" title="현재 초안 복제">복제</button>
   <button id="delDraft" class="danger" title="현재 초안 삭제">삭제</button>
   <span class="sep"></span>
@@ -116,6 +119,37 @@
   </section>
 </main>
 
+<main id="tree" class="tree" data-pane="tree" hidden>
+  <nav class="t-tabs" aria-label="화면 전환">
+    <button type="button" data-pane="tree">트리</button>
+    <button type="button" data-pane="node">노드</button>
+    <button type="button" data-pane="drawer">서랍</button>
+  </nav>
+  <aside class="t-outline" aria-label="아웃라인">
+    <div class="t-head">
+      <h2 id="treeTitle">초안 트리</h2>
+      <span class="chip" id="treeWeek"></span>
+      <div class="t-meter" aria-label="진행 상황"></div>
+      <div class="t-filters" role="group" aria-label="보기 필터">
+        <button type="button" class="chip" data-filter="all" aria-pressed="true">전체</button>
+        <button type="button" class="chip" data-filter="on" aria-pressed="false">켠 것만</button>
+        <button type="button" class="chip" data-filter="new" aria-pressed="false">새로 온 것만</button>
+        <button type="button" class="chip" data-filter="stale" aria-pressed="false">다듬을 것</button>
+      </div>
+    </div>
+    <ul role="tree" id="treeList" aria-label="보고서 트리"></ul>
+  </aside>
+  <section class="t-node" id="nodePane" aria-label="노드 편집"></section>
+  <aside class="t-drawer" id="drawer" aria-label="서랍">
+    <div class="d-tabs" role="tablist">
+      <button type="button" role="tab" data-drawer="evidence" aria-selected="true">근거</button>
+      <button type="button" role="tab" data-drawer="weeks" aria-selected="false">다른 주</button>
+      <button type="button" role="tab" data-drawer="picked" aria-selected="false">집은 그림</button>
+    </div>
+    <div class="d-body"></div>
+  </aside>
+</main>
+
 <dialog id="publishDlg">
   <form method="dialog" class="dlg">
     <h3>Confluence에 올리기</h3>
@@ -137,5 +171,11 @@
 </dialog>
 <div id="toast" class="toast" hidden></div>
 <script src="/static/app.js"></script>
+<script src="/static/tree/motion.js"></script>
+<script src="/static/tree/keys.js"></script>
+<script src="/static/tree/node.js"></script>
+<script src="/static/tree/drawer.js"></script>
+<script src="/static/tree/tree.js"></script>
+<script src="/static/tree/boot.js"></script>
 </body>
 </html>

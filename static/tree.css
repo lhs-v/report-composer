@@ -1,0 +1,60 @@
+/* Tree editor skeleton: three columns (outline | node | drawer), tabs under 900px. Colors come from tokens.css. */
+.tree {
+  --row: 36px;
+  display: grid;
+  grid-template-columns: minmax(300px, 34%) minmax(380px, 1fr) 320px;
+  min-height: 0;
+  flex: 1;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+}
+.tree > aside, .tree > section { min-width: 0; min-height: 0; overflow: auto; border-right: 1px solid var(--line); }
+.tree > .t-drawer { border-right: 0; background: var(--surface); }
+.t-tabs { display: none; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; line-height: 1.5; padding: 0 9px;
+  color: var(--muted); background: transparent;
+  border: 1px solid var(--line); border-radius: 999px; white-space: nowrap;
+}
+button.chip { cursor: pointer; }
+button.chip:hover { border-color: var(--accent); }
+button.chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-soft); }
+
+.tree :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* outline column */
+.t-outline { display: flex; flex-direction: column; background: var(--bg); }
+.t-head { padding: 12px 16px 8px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; position: sticky; top: 0; background: var(--bg); z-index: 1; }
+.t-head h2 { margin: 0; font: 600 18px/1.4 var(--font-display); letter-spacing: 0; text-transform: none; color: var(--fg); min-width: 0; overflow-wrap: anywhere; }
+.t-meter { flex: 1 0 100%; display: flex; gap: 4px; min-height: 6px; margin: 4px 0; }
+.t-filters { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 4px 6px; }
+#treeList { list-style: none; margin: 0; padding: 8px 8px 48px; flex: 1; }
+#treeList:empty::before { content: "아직 줄이 없습니다. 이번 주 패키지가 오면 여기에 트리가 생깁니다."; display: block; padding: 24px 12px; color: var(--muted); font-size: 13px; border: 1px dashed var(--line); border-radius: 8px; }
+
+/* node column */
+.t-node { padding: 24px 28px 96px; background: var(--surface); }
+.t-node > * { max-width: 68ch; }
+.t-node:empty::before { content: "왼쪽에서 줄을 고르면 여기서 글을 다듬습니다."; display: block; max-width: 68ch; padding: 24px 0; color: var(--muted); font-size: 13px; }
+
+/* drawer column */
+.d-tabs { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); }
+.d-tabs button { border-radius: 999px; font-size: 12px; padding: 2px 10px; }
+.d-tabs button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-soft); }
+.d-body { padding: 12px; }
+
+/* narrow window: one column at a time, switched by .t-tabs (the data-pane attribute on #tree) */
+@media (max-width: 899px) {
+  .tree { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .tree > aside, .tree > section { border-right: 0; grid-row: 2; }
+  .t-tabs { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface); grid-row: 1; }
+  .t-tabs button { border-radius: 999px; }
+  .tree[data-pane="tree"] .t-tabs [data-pane="tree"],
+  .tree[data-pane="node"] .t-tabs [data-pane="node"],
+  .tree[data-pane="drawer"] .t-tabs [data-pane="drawer"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-soft); }
+  .tree:not([data-pane="tree"]) .t-outline,
+  .tree:not([data-pane="node"]) .t-node,
+  .tree:not([data-pane="drawer"]) .t-drawer { display: none; }
+}

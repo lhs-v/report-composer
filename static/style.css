@@ -1,11 +1,12 @@
 [hidden] { display: none !important; }   /* a display rule must never show what the markup hides */
+/* colors come from tokens.css (loaded first); these names stay as aliases so the block editor's rules did not change */
 :root {
-  --bg:#f5f6f4; --panel:#ffffff; --line:#d9ded9; --txt:#1c2320; --sub:#5f6a65; --acc:#0d6b61; --acc-soft:#dfeeea;
-  --warn:#b4541f; --err:#b3261e; --ok:#2e7d4f;
-  font-family: "Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --panel:var(--surface); --txt:var(--fg); --sub:var(--muted); --acc:var(--accent); --acc-soft:var(--accent-soft);
+  --warn:var(--mark); --err:#b3261e;
+  font-family: var(--font-body);
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg:#131917; --panel:#1b2320; --line:#2b3632; --txt:#e4eae6; --sub:#97a39d; --acc:#5cc0ae; --acc-soft:#1f3330; --warn:#e39a6a; --err:#ef7b74; --ok:#5fc48c; }
+  :root { --err:#ef7b74; }
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -197,19 +198,24 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 .library .oneLine { margin:2px 0 8px 2px; }
 .lib-block.optional { opacity:.55; border-left:2px dashed var(--line); }
 .lib-block.optional .txt { white-space:pre-line; }
-.err { color:#b4541f; font-size:12px; margin:4px 0 8px; }
+.err { color:var(--mark); font-size:12px; margin:4px 0 8px; }
 details.skip > summary, .stream.skip > summary { opacity:.6; }
 details.pfiles, details.excerptFold { margin: 6px 0; font-size: 12px; }
 details.pfiles > summary, details.excerptFold > summary { cursor: pointer; color: var(--sub); }
 
 /* v3: what stayed home, what has not arrived */
-.home { font-size: 12px; color: #6f685d; margin: 6px 0 0; }
-.late { font-size: 12px; color: #a8512b; border-top: 1px dashed #e3dccf; padding-top: 6px; margin: 8px 0 0; }
+.home { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+.late { font-size: 12px; color: var(--mark); border-top: 1px dashed var(--line); padding-top: 6px; margin: 8px 0 0; }
 
 /* polish dialog */
 #polishDlg textarea { width: 100%; font: inherit; font-size: 13px; padding: 6px 8px; box-sizing: border-box; }
 #polishDlg input { width: 100%; box-sizing: border-box; }
-button.accent { background: #3a5a7c; color: #fff; border-color: #3a5a7c; }
+button.accent { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-#appVersion.stale { color: #a8512b; font-weight: 600; }
+#appVersion.stale { color: var(--mark); font-weight: 600; }
 #polishDlg select { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 4px 6px; }
+
+/* the dark accent is light: white text on it would not read (kept last so it wins over the rules above) */
+@media (prefers-color-scheme: dark) {
+  button.primary, button.accent, .selAdd { color:#1b1915; }
+}
