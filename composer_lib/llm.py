@@ -17,12 +17,13 @@ from .polish import resolve_command
 PROVIDERS: dict[str, dict] = {
     "claude": {"label": "Claude CLI", "command": "claude", "models": ["sonnet", "opus", "haiku"], "default": "sonnet"},
     "gemini": {"label": "Gemini CLI", "command": "gemini", "models": ["gemini-3.8-flash", "gemini-3.8-pro"], "default": "gemini-3.8-flash"},
-    "codex": {"label": "Codex CLI", "command": "codex", "models": ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.5"], "default": "gpt-6-astra"},
+    "codex": {"label": "Codex CLI (실험 · 확인 필요)", "command": "codex", "models": ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.5"], "default": "gpt-6-astra"},
 }
 DEFAULT_SYSTEM = ("너는 한 주의 업무 보고를 다른 팀 사람과 관리자가 읽을 글로 다듬는 편집자다. "
                   "묻는 형식 그대로만 답하고, 입력에 없는 사실·숫자를 만들지 않는다.")
 GEMINI_P_FLAG = "Follow the instructions given on stdin."
 TIMEOUT = 240
+ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 
 class LlmError(Exception):
@@ -123,13 +124,14 @@ class CliProvider:
                 payload = json.loads(out)
             except json.JSONDecodeError:
                 raise LlmError(f"{self.label}가 JSON이 아닌 답을 주었습니다: {out[:200]}") from None
+            if not isinstance(payload, dict):
+                raise LlmError("claude가 알 수 없는 답을 돌려주었습니다")
             result = payload.get("result") or ""
             if payload.get("subtype") != "success" or payload.get("is_error") or result.startswith("Failed to authenticate"):
                 raise LlmError(f"{self.label} 호출 실패: {result[:200] or payload.get('subtype')}")
             text = result
         elif self.spec.provider == "codex":
-            paras = [p.strip() for p in re.split(r"\n\s*\n", out) if p.strip()]
-            text = paras[-1] if paras else ""
+            text = ANSI_RE.sub("", out).strip()            # `codex exec` prints the final message on stdout, progress on stderr
         else:
             text = out.strip()
         if not text.strip():
@@ -146,6 +148,7 @@ class FallbackProvider:
         self.last = ""
 
     def complete(self, prompt: str, *, system: str | None = None) -> str:
+        self.last = ""
         try:
             answer = self.primary.complete(prompt, system=system)
             self.last = "primary"

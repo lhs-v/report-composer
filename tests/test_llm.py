@@ -58,11 +58,16 @@ class ArgvTests(unittest.TestCase):
             CliProvider(ProviderSpec("gemini", command="gemini.cmd"), runner=run).complete("x")
         self.assertIn("신뢰", str(cm.exception))
 
-    def test_codex_argv_uses_exec_and_takes_the_last_paragraph(self):
-        run = runner_ok("thinking...\n\n최종 답\n")
+    def test_codex_argv_uses_exec_and_keeps_the_whole_stdout_without_ansi_codes(self):
+        run = runner_ok("\x1b[1m첫 문단\x1b[0m\n\n둘째 문단\n\x1b[0m")
         p = CliProvider(ProviderSpec("codex", command="codex.cmd"), runner=run)
-        self.assertEqual(p.complete("질문"), "최종 답")
+        self.assertEqual(p.complete("질문"), "첫 문단\n\n둘째 문단")
         self.assertEqual(run.calls[0]["cmd"][1], "exec")
+
+    def test_claude_json_that_is_not_an_object_is_an_llm_error(self):
+        with self.assertRaises(LlmError) as cm:
+            CliProvider(ProviderSpec("claude", command="claude.exe"), runner=runner_ok("null")).complete("x")
+        self.assertIn("알 수 없는 답", str(cm.exception))
 
     def test_a_missing_command_is_not_available_and_raises_a_korean_error(self):
         p = CliProvider(ProviderSpec("gemini", command="no-such-cli-xyz"))
@@ -81,3 +86,11 @@ class FallbackTests(unittest.TestCase):
     def test_without_fallback_the_error_propagates(self):
         with self.assertRaises(LlmError):
             FallbackProvider(FakeProvider([]), None).complete("q")
+
+    def test_last_is_cleared_when_a_later_call_fails_on_both_sides(self):
+        f = FallbackProvider(FakeProvider(["ok"]), FakeProvider([]))
+        self.assertEqual(f.complete("q"), "ok")
+        self.assertEqual(f.last, "primary")
+        with self.assertRaises(LlmError):
+            f.complete("q")
+        self.assertEqual(f.last, "")
