@@ -475,6 +475,12 @@ def _week_entry(weeks_dir: Path, week_dir: Path) -> dict:
             if p.is_file():
                 entry["assets"].append(_asset_block(weeks_dir, p, f"{week}:_:_:asset:{n}", week=week))
                 n += 1
+    picked_dir = week_dir / "picked"
+    if picked_dir.is_dir():
+        for p in sorted(picked_dir.iterdir()):
+            if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES:
+                entry["assets"].append(_asset_block(weeks_dir, p, f"{week}:_:_:picked:{n}", week=week, picked=True))
+                n += 1
     return entry
 
 

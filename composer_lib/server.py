@@ -10,6 +10,8 @@ Routes
   POST /api/confluence/publish/<id> {space, parent_id, title?}
   POST /api/export/<id>       folder with body.html + referenced files
   POST /api/open {path}       open a workspace path in Explorer
+  GET  /api/outline/<week>    draft tree      POST /api/drafts/tree {title, week}
+  GET  /api/memory            captions/uses   PUT /api/memory/caption {record, text, week}
 """
 from __future__ import annotations
 
@@ -32,6 +34,7 @@ from .confluence import ConfluenceClient, ConfluenceError
 from .drafts import Drafts
 from .inbox import process_once, scan
 from .library import build_library
+from .memory import Memory
 from .pastehtml import paste_html, readme_text
 from .storage import attachment_name, attachments_for, package_file, render, validate
 
@@ -45,6 +48,7 @@ class App:
         self.drafts = Drafts(cfg.workspace_dir)
         self.weeks_dir = cfg.workspace_dir / "weeks"
         self.weeks_dir.mkdir(parents=True, exist_ok=True)
+        self.memory = Memory(cfg.workspace_dir / "memory.json")
         self.lock = threading.Lock()
         self.last_inbox: dict = {"checked": None, "extracted": [], "error": None}
 
@@ -59,8 +63,27 @@ class App:
     def client(self) -> ConfluenceClient:
         return ConfluenceClient(self.cfg.confluence, transport=self.transport)
 
+    def outline(self, week: str) -> dict:
+        from .outline import build_tree
+        meta = self.weeks_dir / week / "outcomes.json"
+        if not re.fullmatch(r"\d{4}-W\d{2}", week) or not meta.is_file():
+            raise KeyError(week)
+        data = json.loads(meta.read_text(encoding="utf-8"))
+        return build_tree(data, week, self.memory.data())
+
+    def blocks_of(self, draft: dict) -> list[dict]:
+        if draft.get("kind") == "tree":
+            from .outline import to_blocks
+            return to_blocks(draft)[0]
+        return draft.get("blocks") or []
+
+    @staticmethod
+    def week_updated(folder: Path) -> float:
+        times = [p.stat().st_mtime for p in [folder / "outcomes.json", *folder.glob(".inbox*.json")] if p.exists()]
+        return max(times) if times else folder.stat().st_mtime
+
     def state(self) -> dict:
-        weeks = [{"week": p.name, "has_outcomes": (p / "outcomes.json").exists()} for p in sorted(self.weeks_dir.iterdir(), reverse=True) if p.is_dir()]
+        weeks = [{"week": p.name, "has_outcomes": (p / "outcomes.json").exists(), "updated": self.week_updated(p)} for p in sorted(self.weeks_dir.iterdir(), reverse=True) if p.is_dir()]
         inbox = [s.summary() for s in scan(self.cfg.inbox_dir, self.cfg.workspace_dir).values()]
         return {"config": self.cfg.public(), "version": __version__, "file_version": installed_version(),
                 "gemini": {"model": self.cfg.gemini.model, "command": self.cfg.gemini.command},
@@ -73,13 +96,13 @@ class App:
             shutil.rmtree(folder)
         folder.mkdir(parents=True)
         copied = []
-        for name, src in attachments_for(draft.get("blocks") or []).items():
+        for name, src in attachments_for(self.blocks_of(draft)).items():
             fp = package_file(self.weeks_dir, src)
             if fp:
                 shutil.copy2(fp, folder / name)
                 copied.append(name)
-        (folder / "body.html").write_text(render(draft.get("blocks") or []), encoding="utf-8")
-        doc, manual = paste_html(draft.get("title") or "제목 없음", draft.get("blocks") or [], self.weeks_dir)
+        (folder / "body.html").write_text(render(self.blocks_of(draft)), encoding="utf-8")
+        doc, manual = paste_html(draft.get("title") or "제목 없음", self.blocks_of(draft), self.weeks_dir)
         (folder / "paste.html").write_text(doc, encoding="utf-8")
         (folder / "읽어주세요.txt").write_text(readme_text(draft.get("title") or "제목 없음", manual), encoding="utf-8")
         return {"folder": str(folder), "files": copied, "paste_html": str(folder / "paste.html"), "manual_files": manual}
@@ -104,7 +127,7 @@ class App:
         return f"{week}/picked/{fname}"
 
     def paste(self, draft: dict) -> dict:
-        doc, manual = paste_html(draft.get("title") or "제목 없음", draft.get("blocks") or [], self.weeks_dir)
+        doc, manual = paste_html(draft.get("title") or "제목 없음", self.blocks_of(draft), self.weeks_dir)
         return {"html": doc, "manual_files": manual}
 
 
@@ -269,6 +292,14 @@ def make_handler(app: App):
                 return self._json(200, {**app.state(), "page_origin": f"http://{self._origins()[1]}"})
             if p == "/api/library":
                 return self._json(200, build_library(app.weeks_dir))
+            m = re.fullmatch(r"/api/outline/(\d{4}-W\d{2})", p)
+            if m:
+                try:
+                    return self._json(200, app.outline(m.group(1)))
+                except KeyError:
+                    return self._json(404, {"error": "그 주차의 outcomes.json이 없습니다"})
+            if p == "/api/memory":
+                return self._json(200, app.memory.data())
             if p == "/api/drafts":
                 return self._json(200, app.drafts.list())
             m = re.fullmatch(r"/api/drafts/(d-[0-9a-f]+)", p)
@@ -320,7 +351,8 @@ def make_handler(app: App):
                 except KeyError:
                     return self._json(404, {"error": "no such draft"})
             if p == "/api/preview":
-                xhtml = render(body.get("blocks") or [])
+                blocks = app.blocks_of(body["draft"]) if isinstance(body.get("draft"), dict) else (body.get("blocks") or [])
+                xhtml = render(blocks)
                 return self._json(200, {"xhtml": xhtml, "error": validate(xhtml)})
             if p == "/api/polish":
                 from .polish import PolishError, polish_draft
@@ -351,7 +383,7 @@ def make_handler(app: App):
                 parent = body.get("parent_id") or app.cfg.confluence.default_parent_id or None
                 if not space:
                     return self._json(400, {"error": "스페이스 키가 필요합니다."})
-                err = validate(render(d.get("blocks") or []))
+                err = validate(render(app.blocks_of(d)))
                 if err:
                     return self._json(400, {"error": f"본문 변환 오류: {err}"})
 
@@ -378,6 +410,13 @@ def make_handler(app: App):
                 except ValueError as e:
                     return self._json(400, {"error": str(e)})
                 return self._json(200, {"src": src})
+            if p == "/api/drafts/tree":
+                week = str(body.get("week") or "")
+                try:
+                    tree = app.outline(week)
+                except KeyError:
+                    return self._json(404, {"error": "그 주차의 outcomes.json이 없습니다"})
+                return self._json(200, app.drafts.create_tree(str(body.get("title") or f"주간 보고 {week}"), week, tree))
             if p == "/api/open":
                 target = Path(str(body.get("path") or "")).resolve()
                 try:
@@ -396,6 +435,16 @@ def make_handler(app: App):
         def do_PUT(self):
             if not self._guard(urllib.parse.urlsplit(self.path).path):
                 return
+            if urllib.parse.urlsplit(self.path).path == "/api/memory/caption":
+                body = self._body()
+                if body is None:
+                    return
+                rid, text, week = body.get("record"), body.get("text"), body.get("week")
+                if (not isinstance(rid, str) or not rid or not isinstance(text, list) or not 1 <= len(text) <= 2
+                        or not all(isinstance(x, str) for x in text) or not isinstance(week, str) or not re.fullmatch(r"\d{4}-W\d{2}", week)):
+                    return self._json(400, {"error": "record(문자열), text(문자열 1~2개), week(YYYY-Www)가 필요합니다."})
+                app.memory.set_caption(rid, text, week)
+                return self._json(200, {"ok": True})
             m = re.fullmatch(r"/api/drafts/(d-[0-9a-f]+)", urllib.parse.urlsplit(self.path).path)
             if not m:
                 return self._send(404, "not found", "text/plain")

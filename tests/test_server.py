@@ -289,5 +289,94 @@ class ServerV2Tests(unittest.TestCase):
         self.assertEqual(self.get(f"/page/{page['src']}")[0], 200)
 
 
+class ServerV3Tests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from tests.test_library_v3 import OUTCOMES_V3, WEEK
+        cls.week = WEEK
+        cls.tmp = tempfile.TemporaryDirectory()
+        base = Path(cls.tmp.name)
+        cls.cfg = Config(inbox_dir=base / "inbox", workspace_dir=base / "ws", port=0, confluence=ConfluenceConfig())
+        cls.weeks = cls.cfg.workspace_dir / "weeks"
+        w = cls.weeks / WEEK
+        w.mkdir(parents=True)
+        (w / "outcomes.json").write_text(json.dumps(OUTCOMES_V3, ensure_ascii=False), encoding="utf-8")
+        (w / "sp-mobile-01-G.md").write_text("# 등급 체계 결론", encoding="utf-8")
+        (w / "texts").mkdir()
+        (w / "texts" / "U-1.md").write_text("# 응답 발췌\n\n본문", encoding="utf-8")
+        for r in OUTCOMES_V3["records"]:
+            for fl in r["files"]:
+                if fl.get("href"):
+                    fp = w / fl["href"]
+                    fp.parent.mkdir(parents=True, exist_ok=True)
+                    fp.write_bytes(b"0" * fl["bytes"])
+        cls.cfg.inbox_dir.mkdir()
+        cls.httpd = make_server("127.0.0.1", 0, cls.cfg)
+        cls.port = cls.httpd.server_address[1]
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+        cls.tmp.cleanup()
+
+    def req(self, path, method="GET", data=None, headers=None):
+        body = json.dumps(data).encode() if isinstance(data, (dict, list)) else data
+        h = {"Content-Type": "application/json", **(headers or {})} if body else (headers or {})
+        r = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", method=method, data=body, headers=h)
+        try:
+            with urllib.request.urlopen(r, timeout=5) as resp:
+                raw = resp.read()
+                return resp.status, (json.loads(raw) if resp.headers.get("Content-Type", "").startswith("application/json") else raw)
+        except urllib.error.HTTPError as e:
+            return e.code, e.read()
+
+    def test_outline_route_builds_a_tree_and_a_tree_draft_can_be_created(self):
+        week = self.week
+        code, tree = self.req(f"/api/outline/{week}")
+        self.assertEqual(code, 200)
+        self.assertEqual(tree["week"], week)
+        self.assertEqual(tree["nodes"][tree["root"][0]]["kind"], "summary")
+        self.assertEqual(self.req("/api/outline/2030-W01")[0], 404)
+        code, d = self.req("/api/drafts/tree", "POST", {"title": "트리", "week": week})
+        self.assertEqual((code, d["kind"], d["week"]), (200, "tree", week))
+        self.assertEqual(self.req("/api/drafts/tree", "POST", {"title": "x", "week": "2030-W01"})[0], 404)
+        code, pv = self.req("/api/preview", "POST", {"draft": d})
+        self.assertEqual(code, 200)
+        self.assertIn("<h2>", pv["xhtml"])
+
+    def test_memory_caption_round_trips_and_the_tree_uses_it(self):
+        from tests.test_library_v3 import R_PAGE
+        code, _ = self.req("/api/memory/caption", "PUT", {"record": R_PAGE, "text": ["고친 설명"], "week": self.week})
+        self.assertEqual(code, 200)
+        self.assertEqual(self.req("/api/memory")[1]["captions"][R_PAGE]["text"], ["고친 설명"])
+        tree = self.req(f"/api/outline/{self.week}")[1]
+        rec = next(n for n in tree["nodes"].values() if n["kind"] == "record" and n["src"]["record"] == R_PAGE)
+        self.assertEqual(rec["caption"], ["고친 설명"])
+        for bad in ({"record": 5, "text": ["a"], "week": self.week}, {"record": R_PAGE, "text": [], "week": self.week},
+                    {"record": R_PAGE, "text": ["a", "b", "c"], "week": self.week}, {"record": R_PAGE, "text": [1], "week": self.week},
+                    {"record": R_PAGE, "text": ["a"], "week": "W43"}):
+            self.assertEqual(self.req("/api/memory/caption", "PUT", bad)[0], 400, bad)
+
+    def test_state_reports_when_a_week_folder_last_changed(self):
+        import os
+        import time
+        st = self.req("/api/state")[1]
+        w = next(x for x in st["weeks"] if x["week"] == self.week)
+        self.assertIsInstance(w["updated"], (int, float))
+        ib = self.weeks / self.week / ".inbox-r2.json"
+        ib.write_text("{}", encoding="utf-8")
+        os.utime(ib, (time.time() + 5, time.time() + 5))
+        self.assertGreater(next(x for x in self.req("/api/state")[1]["weeks"] if x["week"] == self.week)["updated"], w["updated"])
+
+    def test_picked_images_are_library_assets(self):
+        (self.weeks / self.week / "picked").mkdir(exist_ok=True)
+        (self.weeks / self.week / "picked" / "pick-1.png").write_bytes(b"PNG")
+        lib = self.req("/api/library")[1]
+        week = next(w for w in lib if w["week"] == self.week)
+        self.assertTrue(any(a.get("picked") and a["src"] == f"{self.week}/picked/pick-1.png" for a in week["assets"]))
+
+
 if __name__ == "__main__":
     unittest.main()
