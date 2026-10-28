@@ -236,6 +236,8 @@ class ServerTests(unittest.TestCase):
         status, d = self.req("/api/drafts", "POST", {"title": "초안"})
         d["blocks"] = [{"id": "x1", "type": "paragraph", "text": "맵 만듬"}]
         self.req(f"/api/drafts/{d['id']}", "PUT", d)
+        for obj, attr in ((self.cfg.llm, "provider"), (self.cfg.llm, "command"), (self.cfg.gemini, "command")):
+            self.addCleanup(setattr, obj, attr, getattr(obj, attr))
         self.cfg.llm.provider = "claude"
         status, res = self.req("/api/polish", "POST", {"draft_id": d["id"]})
         self.assertEqual(status, 409)
@@ -247,6 +249,12 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(status, 409)
         err = res if isinstance(res, dict) else json.loads(res)
         self.assertIn("no-such-gemini-cli", err["error"])
+        self.cfg.llm.command = "no-such-llm-command"                            # the command chosen in the LLM dialog wins over the gemini section
+        status, res = self.req("/api/polish", "POST", {"draft_id": d["id"]})
+        self.assertEqual(status, 409)
+        err = res if isinstance(res, dict) else json.loads(res)
+        self.assertIn("no-such-llm-command", err["error"])
+        self.assertNotIn("no-such-gemini-cli", err["error"])
 
     def test_a_page_opens_the_720p_copy_where_an_older_package_pointed_home(self):
         from composer_lib.server import substitute_copies
@@ -592,10 +600,12 @@ class ServerV3Tests(unittest.TestCase):
         d, claim = self._tree()
         code, job = self.req("/api/llm/jobs", "POST", {"kind": "node", "draft_id": d["id"], "node_id": claim["id"], "style": "brief"})
         self.assertEqual(code, 202)
-        for _ in range(100):
+        end = time.time() + 10
+        while True:
             j = self.req(f"/api/llm/jobs/{job['job']['id']}")[1]
-            if j["status"] == "done": break
+            if j["status"] in ("done", "failed", "cancelled") or time.time() > end: break
             time.sleep(0.02)
+        self.assertEqual(j["status"], "done", j)
         self.assertEqual(j["result"]["value"], "새 본문"); self.assertEqual(j["result"]["before"], claim["text"])
         self.assertEqual(self.req("/api/llm/jobs/nope")[0], 404)
         self.assertEqual(self.req("/api/llm/jobs", "POST", {"kind": "poem", "draft_id": d["id"]})[0], 400)

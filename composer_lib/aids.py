@@ -67,6 +67,19 @@ def _flow_line(item: dict) -> str:
     return f"{when} · {text}" if when and text else text
 
 
+# A record's title is a bare file name when the home server found nothing better; a file name never goes into a prompt.
+_FILE_NAME = re.compile(r"[^\s/\\]+\.([A-Za-z0-9]{1,5})")
+_FILE_TOKEN = re.compile(r"(?<!\S)[^\s/\\]+\.(?=[0-9]{0,4}[A-Za-z])[A-Za-z0-9]{1,5}(?=[\s,;:)\]]|$)")
+
+
+def _safe_title(title) -> str:
+    t = str(title or "")
+    m = _FILE_NAME.fullmatch(t)
+    if m and re.search(r"[A-Za-z]", m.group(1)):
+        return "(제목 없음)"
+    return _FILE_TOKEN.sub("(파일)", t)
+
+
 def _child_lines(draft: dict, node: dict, depth: int = 0) -> list[str]:
     """The text of the children that are on, parent first, indented by depth. Off subtrees are skipped whole."""
     pad, out = "  " * depth, []
@@ -74,7 +87,7 @@ def _child_lines(draft: dict, node: dict, depth: int = 0) -> list[str]:
         kind = c.get("kind")
         if kind == "record":
             cap = " / ".join(x for x in c.get("caption") or [] if str(x).strip())
-            label = " · ".join(x for x in (c.get("kind_label"), c.get("title")) if x)
+            label = " · ".join(x for x in (c.get("kind_label"), _safe_title(c.get("title"))) if x)
             out.append(f"{pad}- 기록: {label}" + (f" — {cap}" if cap else ""))
         elif kind == "flow":
             out += [f"{pad}- 흐름: {_flow_line(i)}" for i in c.get("items") or [] if _flow_line(i)]
@@ -151,7 +164,7 @@ def _parent_claim(draft: dict, rec: dict) -> dict | None:
 def _build_caption(draft: dict, node_id: str | None, style: str) -> dict:
     rec = _node(draft, node_id, ("record",), "설명 다시 쓰기")
     now = [str(x) for x in rec.get("caption") or []]
-    lines = [f"기록 제목: {rec.get('title') or ''}"]
+    lines = [f"기록 제목: {_safe_title(rec.get('title'))}"]
     if rec.get("kind_label"):
         lines.append(f"종류: {rec['kind_label']}")
     lines.append("지금 설명: " + (" / ".join(now) if now else "(없음)"))

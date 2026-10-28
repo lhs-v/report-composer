@@ -89,7 +89,7 @@ class JobQueue:
             hit = self._cache.get(key)
             if hit is not None:
                 self._cache.move_to_end(key)
-                job.status, job.cached, job.result = "done", True, {**hit, "value": _copy(hit["value"])}
+                job.status, job.cached, job.result = "done", True, {**hit, "before": job.before, "value": _copy(hit["value"])}
             self._remember(job)
             if hit is None:
                 self._pending.append(job)

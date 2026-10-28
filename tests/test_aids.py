@@ -18,6 +18,17 @@ class BuildTests(unittest.TestCase):
         self.assertNotIn("records/", b["prompt"])                                                                     # no paths
         self.assertIn("개조식", b["prompt"])
 
+    def test_a_file_name_used_as_a_record_title_never_reaches_the_prompt(self):
+        self.rec["title"] = "2026-10-14-chart.png"
+        for b in (build("node", self.d, self.claim["id"]), build("caption", self.d, self.rec["id"])):
+            self.assertNotIn(".png", b["prompt"]); self.assertNotIn(".png", b["source"])
+            self.assertIn("(제목 없음)", b["prompt"])
+        self.rec["title"] = "비교 shot.png 캡처"
+        b = build("caption", self.d, self.rec["id"])
+        self.assertNotIn(".png", b["prompt"]); self.assertIn("비교 (파일) 캡처", b["prompt"])
+        self.rec["title"] = "버전 1.2 비교"                                                  # a number with a dot is not a file name
+        self.assertIn("버전 1.2 비교", build("caption", self.d, self.rec["id"])["prompt"])
+
     def test_summary_prompt_uses_on_claims_and_decisions_and_targets_the_summary_node(self):
         b = build("summary", self.d, None)
         self.assertEqual(b["target"]["field"], "text")

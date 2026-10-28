@@ -52,6 +52,17 @@ class QueueTests(unittest.TestCase):
         self.assertEqual((again["status"], again["result"]["value"], again["cached"]), ("done", "다듬은 본문", True))
         self.assertEqual(q.get(again["id"])["status"], "done")
 
+    def test_a_cache_hit_reports_its_own_before(self):
+        q = JobQueue(lambda: FallbackProvider(FakeProvider(["sp-mobile: 한 줄"]), None))
+        d = tree_draft()
+        summary = next(n for n in d["nodes"].values() if n["kind"] == "summary")
+        summary["text"] = "첫 요약"
+        first = wait_done(q, q.submit("summary", d, None, "brief")["id"])
+        summary["text"] = "고친 요약"                              # the prompt is built from the claims, so it is unchanged: a cache hit
+        again = q.submit("summary", d, None, "brief")
+        self.assertTrue(again["cached"])
+        self.assertEqual((first["result"]["before"], again["result"]["before"]), ("첫 요약", "고친 요약"))
+
     def test_a_failing_provider_marks_the_job_failed_with_the_reason(self):
         q = JobQueue(lambda: FallbackProvider(FakeProvider([]), None))
         d = tree_draft(); claim = first_claim(d)
