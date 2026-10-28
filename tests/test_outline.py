@@ -220,7 +220,7 @@ class ToBlocksTests(unittest.TestCase):
         claim["page"] = True
         main, pages = to_blocks(d)
         self.assertEqual(len(pages), 1)
-        self.assertEqual(pages[0]["title"], "비교 결론")
+        self.assertEqual(pages[0]["title"], "비교 결론 — 2026-W43")      # titles are unique per Confluence space: the week keeps repeated claims apart
         self.assertEqual(pages[0]["node"], claim["id"])
         self.assertEqual(pages[0]["blocks"][0], {"id": f"b-{claim['id'][2:]}-0", "type": "heading", "level": 2, "text": "비교 결론", "source_ref": "2026-W43:C--Claude-sp-mobile:C-U-1:"})
         stub = next(b for b in main if "[[page:" in (b.get("text") or ""))

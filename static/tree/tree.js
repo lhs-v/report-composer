@@ -159,7 +159,13 @@ window.Tree = (() => {
 
   // ---- saving: the whole draft, 600 ms after the last change ----
   const saveState = text => { const el = document.getElementById("saveState"); if (el) el.textContent = text; };
-  async function save(draft, rev, leaving = false) {
+  let inflight = null;                                             // the request that is on its way, so an export can wait for it
+  function save(draft, rev, leaving = false) {
+    const p = send(draft, rev, leaving);
+    inflight = p; p.finally(() => { if (inflight === p) inflight = null; });
+    return p;
+  }
+  async function send(draft, rev, leaving) {
     S.saveTimer = null;
     try {
       // leaving the page: keepalive lets the request outlive it, but browsers cap such bodies near 64 KB
@@ -175,6 +181,8 @@ window.Tree = (() => {
   function flush(leaving = false) { // leaving a draft (or the page) with an unsaved change: send it now
     if (S.saveTimer && S.draft) { clearTimeout(S.saveTimer); save(S.draft, S.rev, leaving); }
   }
+  // the export routes read the stored draft: send what is pending and wait until the server has it
+  async function settle() { flush(); if (inflight) await inflight; }
   window.addEventListener("pagehide", () => flush(true));
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(true); }); // a tab switch or a closing window may never fire pagehide
   function change(mutate) {
@@ -228,5 +236,5 @@ window.Tree = (() => {
     refreshIfStale(draft);
   }
 
-  return { open, refresh, render, change, setDraft: change, toggle, fold, select, setFilter, flush, state: S, nodes, walk, markLabel: m => MARK[m] || m };
+  return { open, refresh, render, change, setDraft: change, toggle, fold, select, setFilter, flush, settle, state: S, nodes, walk, markLabel: m => MARK[m] || m };
 })();

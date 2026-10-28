@@ -20,6 +20,8 @@ class FakeTransport:
         self.versions = {}                         # version of every other page, and of 900 once it is updated
         self.created = 0
         self.attachments = {}
+        self.clash = False                         # a page title that is taken: creating a page answers 400 like Confluence does
+        self.hook = None                           # called with (method, path) before each call is answered: a test can act "meanwhile"
 
     def _page_json(self, pid, version):
         return json.dumps({"id": pid, "title": "t", "version": {"number": version}, "space": {"key": "AI"},
@@ -28,12 +30,16 @@ class FakeTransport:
     def __call__(self, method, url, headers, body):
         self.calls.append({"method": method, "url": url, "headers": headers, "body": body})
         path = url.split("/rest/api/", 1)[1]
+        if self.hook:
+            self.hook(method, path)
         if self.fail_status:
             return self.fail_status, {}, json.dumps({"statusCode": self.fail_status, "message": "권한이 없습니다"}).encode()
         if self.fail_at is not None and len(self.calls) - 1 == self.fail_at:
             self.fail_at = None
             return 500, {}, json.dumps({"statusCode": 500, "message": "서버 오류"}).encode()
         if method == "POST" and path == "content":
+            if self.clash:
+                return 400, {}, json.dumps({"statusCode": 400, "message": "A page with this title already exists: A page already exists with the title X in the space with key AI"}).encode()
             pid = str(900 + self.created)
             self.created += 1
             if pid == "900":

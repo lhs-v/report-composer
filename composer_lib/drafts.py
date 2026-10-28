@@ -6,6 +6,8 @@ import datetime as dt
 import json
 import os
 import secrets
+import threading
+from collections import Counter
 from pathlib import Path
 
 from .outline import KINDS
@@ -21,6 +23,7 @@ class Drafts:
     def __init__(self, workspace_dir: Path):
         self.dir = Path(workspace_dir) / "drafts"
         self.dir.mkdir(parents=True, exist_ok=True)
+        self._save_lock = threading.Lock()      # save() reads, merges and writes: two requests at once (an autosave during a publish) must not overwrite each other
 
     def _path(self, draft_id: str) -> Path:
         if not draft_id.startswith("d-") or any(c in draft_id for c in "/\\."):
@@ -73,6 +76,13 @@ class Drafts:
         for r in d["root"]:
             if r not in nodes:
                 raise ValueError(f"root {r} is not a node")
+        # a tree: every node has one place. A node listed twice (under two parents, twice under one, or at the top and below)
+        # makes to_blocks / used_ids write it twice, and a node under its own descendant makes them recurse forever.
+        # (any cycle through the top level lists some node twice, so counting the places is the whole check)
+        places = Counter([*d["root"], *(c for n in nodes.values() for c in n.get("children") or [])])
+        dup = next((nid for nid, k in places.items() if k > 1), None)
+        if dup is not None:
+            raise ValueError(f"node {dup} is listed more than once (a repeated child or a cycle)")
 
     def get(self, draft_id: str) -> dict | None:
         p = self._path(draft_id)
@@ -81,6 +91,11 @@ class Drafts:
         return json.loads(p.read_text(encoding="utf-8"))
 
     def save(self, draft: dict) -> dict:
+        """Merge `draft` into the stored one (fields it leaves out stay) and write it."""
+        with self._save_lock:
+            return self._save(draft)
+
+    def _save(self, draft: dict) -> dict:
         existing = self.get(draft["id"]) or {}
         if (draft.get("kind") or existing.get("kind")) == "tree":
             self._validate_tree({**existing, **draft})

@@ -22,6 +22,9 @@ input, select, textarea { font: inherit; font-size: 13px; color: var(--txt); bac
 .top select { max-width: 320px; }
 .top button { white-space: nowrap; }
 .top .sp { flex:1; } .top .sep { width:1px; height:22px; background:var(--line); margin:0 4px; }
+/* the draft's title and the export buttons: right end of the top bar, shared by the block editor and the tree */
+.top .exportbar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.top .exportbar .title { font-weight:600; width:220px; min-width:120px; }
 .pill { font-size:12px; border:1px solid var(--line); border-radius:999px; padding:2px 10px; color:var(--sub); }
 .pill.warn { color: var(--warn); border-color: var(--warn); }
 .field { display:flex; align-items:center; gap:6px; font-size:13px; }
@@ -103,8 +106,7 @@ input, select, textarea { font: inherit; font-size: 13px; color: var(--txt); bac
 .lib-block .meta { font-size:11px; color:var(--sub); }
 .lib-block .open { font-size:12px; padding:1px 7px; }
 .draftHead { padding:10px 16px; border-bottom:1px solid var(--line); background:var(--panel); display:grid; grid-template-columns: 1fr auto; gap:8px 16px; align-items:center; }
-.draftHead .title { font-size:18px; font-weight:600; border:0; border-bottom:1px solid transparent; border-radius:0; padding:2px 0; background:transparent; width:100%; }
-.draftHead .title:focus { outline:0; border-bottom-color: var(--acc); }
+.draftHead .tabs { grid-column: 1; }
 .tabs button { border-radius:999px; }
 .tabs button.active { background: var(--acc-soft); color: var(--acc); border-color: var(--acc-soft); }
 .actions { grid-column: 1 / -1; display:flex; gap:6px; flex-wrap:wrap; }

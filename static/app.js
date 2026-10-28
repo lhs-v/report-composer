@@ -639,6 +639,7 @@
     commit(); renderEditor(); renderLibrary();
   }
   let softTimer = null;
+  let renameTimer = null;
   function scheduleSaveSoft() { clearTimeout(softTimer); softTimer = setTimeout(() => { scheduleSave(); }, 400); }
   function focusBlock(i, item) {
     const el = $(`#editor .block[data-i="${i}"]`); if (!el) return;
@@ -700,6 +701,8 @@
   }
 
   // ---------- publish / export / copy ----------
+  // the routes below read the stored draft: a tree's pending autosave must reach the server first
+  const settleTree = async () => { if (state.draft?.kind === "tree") await window.Tree?.settle?.(); };
   async function openPublish() {
     const dlg = $("#publishDlg"); $("#pubError").textContent = ""; $("#pubTitle").value = $("#draftTitle").value;
     const cfg = state.weeksInfo.config.confluence;
@@ -727,17 +730,32 @@
     if ($("#publishDlg").returnValue !== "go") return;
     const body = { space: $("#pubSpace").value, parent_id: $("#pubParent").value || null, title: $("#pubTitle").value };
     toast("Confluence에 올리는 중…", 60000);
-    try { const res = await api(`/api/confluence/publish/${state.draft.id}`, { method: "POST", body });
-      state.draft.confluence = res; await refreshDrafts();
+    try { await settleTree();
+      const draft = state.draft;
+      const res = await api(`/api/confluence/publish/${draft.id}`, { method: "POST", body });
+      // the server owns the page bindings of a tree and sends them back with the result: take both, or the next autosave would carry stale ones
+      const { pages, ...bound } = res;
+      draft.confluence = bound;
+      if (draft.kind === "tree") {
+        if (pages) draft.pages = pages;
+        if (body.title) {                                                 // the server saved the dialog's title; keep the client's copy in step
+          draft.title = body.title;
+          if (draft === state.draft) { $("#draftTitle").value = body.title; $("#treeTitle").textContent = body.title; }
+        }
+      }
+      await refreshDrafts();
       toast(`올렸습니다 (v${res.version}). <a href="${esc(res.url)}" target="_blank">페이지 열기</a>`, 12000); }
     catch (e) { toast(`실패: ${esc(e.message)}`, 12000); }
   };
   $("#publishBtn").onclick = openPublish;
   $("#copyHtml").onclick = async () => {
     try {
+      await settleTree();
       const r = await api(`/api/paste/${state.draft.id}`, { method: "POST", body: {} });
       const html = r.html.replace(/<div class="how"[\s\S]*?<\/div><hr>/, "");   // drop the instruction box from the copy
-      const text = state.draft.blocks.map(b => b.text || (b.items || []).join("\n") || b.caption || "").join("\n\n");
+      // the plain-text flavour comes from the HTML that is copied (a tree draft has no blocks to read it from)
+      const text = (new DOMParser().parseFromString(html.replace(/<\/(p|h[1-6]|li|tr|div|table|ul|ol)>/gi, "$&\n"), "text/html").body.textContent || "")
+        .replace(/\n{3,}/g, "\n\n").trim();
       await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) })]);
       const extra = r.manual_files.length ? ` 영상·파일 ${r.manual_files.length}개는 '첨부 폴더'에서 끌어 넣으세요.` : "";
       toast("본문을 그림까지 포함해 복사했습니다. Confluence 편집기에 Ctrl+V." + extra, 7000);
@@ -746,9 +764,10 @@
     }
   };
   $("#exportBtn").onclick = async () => {
-    try { const r = await api(`/api/export/${state.draft.id}`, { method: "POST", body: {} });
+    try { await settleTree();
+      const r = await api(`/api/export/${state.draft.id}`, { method: "POST", body: {} });
       await api("/api/open", { method: "POST", body: { path: r.folder } });
-      toast(`폴더를 열었습니다. paste.html을 브라우저로 열어 전체 복사 → Confluence에 붙여넣기. 수동 첨부 ${r.manual_files.length}개.`, 8000); } catch (e) { toast("실패: " + esc(e.message)); }
+      toast(`폴더를 열었습니다. paste.html을 브라우저로 열어 전체 복사 → Confluence에 붙여넣기. 수동 첨부 ${r.manual_files.length}개.${r.pages?.length ? ` 별도 페이지 ${r.pages.length}개는 page-N.html로 따로 들어 있습니다.` : ""}`, 8000); } catch (e) { toast("실패: " + esc(e.message)); }
   };
 
   // ---------- top bar ----------
@@ -756,7 +775,14 @@
   $("#newDraft").onclick = () => newDraft(prompt("새 초안 제목", defaultTitle()) || defaultTitle());
   $("#dupDraft").onclick = async () => { const d = await api(`/api/drafts/${state.draft.id}/duplicate`, { method: "POST", body: {} }); await refreshDrafts(); await openDraft(d.id); };
   $("#delDraft").onclick = async () => { if (!confirm(`'${state.draft.title}' 초안을 삭제할까요?`)) return; await api(`/api/drafts/${state.draft.id}`, { method: "DELETE" }); state.draft = null; await refreshDrafts(); await loadAll(); };
-  $("#draftTitle").oninput = scheduleSaveSoft;
+  $("#draftTitle").oninput = () => {
+    if (state.draft?.kind !== "tree") return scheduleSaveSoft();
+    // a tree is saved by the tree editor (one autosave, the same "저장 중…" state); the heading over the outline follows
+    const v = $("#draftTitle").value;
+    window.Tree?.change?.(() => { state.draft.title = v || "제목 없음"; });
+    $("#treeTitle").textContent = v || "초안 트리";
+    clearTimeout(renameTimer); renameTimer = setTimeout(refreshDrafts, 1500);   // the draft list in the select shows the new name once typing pauses
+  };
   $("#undoBtn").onclick = undo; $("#redoBtn").onclick = redo;
   $("#addPara").onclick = () => { state.draft.blocks.push({ id: uid(), type: "paragraph", text: "", source_ref: null }); commit(); renderEditor(); focusBlock(state.draft.blocks.length - 1); };
   $("#addHead").onclick = () => { state.draft.blocks.push({ id: uid(), type: "heading", level: 2, text: "", source_ref: null }); commit(); renderEditor(); focusBlock(state.draft.blocks.length - 1); };

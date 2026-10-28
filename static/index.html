@@ -26,6 +26,13 @@
   <span id="saveState" class="muted small">저장됨</span>
   <span class="sep"></span>
   <button id="polishBtn" class="accent" title="대충 쓴 초안을 Gemini로 다듬어 새 초안으로 만듭니다">✨ 다듬기</button>
+  <span class="sep"></span>
+  <div class="exportbar">
+    <input id="draftTitle" class="title" placeholder="페이지 제목" aria-label="초안 제목" autocomplete="off">
+    <button id="exportBtn" title="첨부할 파일과 본문 HTML을 한 폴더에 모읍니다">첨부 폴더</button>
+    <button id="copyHtml" title="Confluence 편집기에 붙여넣을 수 있게 본문을 서식 있는 텍스트로 복사">서식 복사</button>
+    <button id="publishBtn" class="primary">Confluence에 올리기</button>
+  </div>
 </header>
 
 <dialog id="polishDlg">
@@ -99,7 +106,6 @@
 
   <section class="col right">
     <div class="draftHead">
-      <input id="draftTitle" class="title" placeholder="페이지 제목">
       <div class="tabs">
         <button data-tab="edit" class="active">편집</button>
         <button data-tab="preview">미리보기</button>
@@ -108,9 +114,6 @@
         <button id="addPara" title="빈 문단 추가">＋ 문단</button>
         <button id="addHead" title="제목 추가">＋ 제목</button>
         <button id="addDivider" title="구분선">— 구분선</button>
-        <button id="exportBtn" title="첨부할 파일과 본문 HTML을 한 폴더에 모읍니다">첨부 폴더</button>
-        <button id="copyHtml" title="Confluence 편집기에 붙여넣을 수 있게 본문을 서식 있는 텍스트로 복사">서식 복사</button>
-        <button id="publishBtn" class="primary">Confluence에 올리기</button>
       </div>
     </div>
     <div id="editor" class="editor" data-tab="edit"></div>

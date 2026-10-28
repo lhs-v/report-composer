@@ -250,7 +250,8 @@ def to_blocks(draft: dict) -> tuple[list[dict], list[dict]]:
         if not n or not n.get("on"):
             return
         if n.get("page") and not in_reference:
-            pages.append({"node": n["id"], "title": n["title"], "blocks": page_blocks(n)})
+            # a Confluence title is unique per space: two claims called alike (or last week's page) must not collide, so the week is part of it
+            pages.append({"node": n["id"], "title": f"{n['title']} — {week}" if week else n["title"], "blocks": page_blocks(n)})
             out.append({"id": f"b-{n['id'][2:]}-stub", "type": "paragraph", "source_ref": _ref(n),
                         "text": f"{n['title']} — {first_sentence(n.get('text'))} [[page:{n['id']}]]".replace(" —  [[", " [[")})
             return

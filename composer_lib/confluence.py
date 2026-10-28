@@ -30,6 +30,14 @@ class ConfluenceError(RuntimeError):
         self.message = message
 
 
+def _title_taken(e: ConfluenceError, title: str) -> ConfluenceError:
+    """A 400 that says the title is already in use (titles are unique per space) becomes a message the writer can act on; any other error stays as it is."""
+    text = e.message.lower()
+    if e.status == 400 and ("already exist" in text or "이미 존재" in text or "이미 있" in text):
+        return ConfluenceError(400, f"같은 제목의 페이지가 이미 있습니다: {title} — 제목을 바꾸거나 그 페이지를 지운 뒤 다시 올려 주세요.")
+    return e
+
+
 def _urllib_transport(cfg: ConfluenceConfig):
     ctx = ssl.create_default_context(cafile=cfg.ca_bundle or None)
     if not cfg.verify_ssl:
@@ -128,13 +136,19 @@ class ConfluenceClient:
                    "body": {"storage": {"value": body, "representation": "storage"}}}
         if parent_id:
             payload["ancestors"] = [{"id": str(parent_id)}]
-        p = self._call("POST", "content", json_body=payload)
+        try:
+            p = self._call("POST", "content", json_body=payload)
+        except ConfluenceError as e:
+            raise _title_taken(e, title) from e
         return {"id": str(p.get("id")), "version": int(p.get("version", {}).get("number", 1)), "url": self._web_url(p)}
 
     def update_page(self, page_id: str, title: str, body: str, version: int) -> dict:
         payload = {"id": str(page_id), "type": "page", "title": title, "version": {"number": version, "minorEdit": True},
                    "body": {"storage": {"value": body, "representation": "storage"}}}
-        p = self._call("PUT", f"content/{page_id}", json_body=payload)
+        try:
+            p = self._call("PUT", f"content/{page_id}", json_body=payload)
+        except ConfluenceError as e:
+            raise _title_taken(e, title) from e
         return {"id": str(p.get("id")), "version": int(p.get("version", {}).get("number", version)), "url": self._web_url(p)}
 
     def list_attachments(self, page_id: str) -> dict[str, str]:

@@ -436,8 +436,7 @@ class ServerV3Tests(unittest.TestCase):
 
     def test_publishing_forgets_page_bindings_of_deleted_nodes(self):
         d, claim = self._page_draft()
-        d["pages"]["n-gone"] = {"page_id": "999", "version": 3, "url": "https://wiki.corp/x"}
-        self.assertEqual(self.req(f"/api/drafts/{d['id']}", "PUT", d)[0], 200)
+        self.httpd.app.drafts.save({"id": d["id"], "pages": {"n-gone": {"page_id": "999", "version": 3, "url": "https://wiki.corp/x"}}})   # bindings are server-owned: a PUT cannot plant one
         self.assertEqual(self.req(f"/api/confluence/publish/{d['id']}", "POST", {"space": "AI"})[0], 200)
         self.assertEqual(sorted(self.req(f"/api/drafts/{d['id']}")[1]["pages"]), [claim["id"]])
 
@@ -482,6 +481,61 @@ class ServerV3Tests(unittest.TestCase):
         self.assertEqual(self.req(f"/api/drafts/{d['id']}", "PUT", d)[0], 200)
         self.assertEqual(self.req(f"/api/paste/{d['id']}", "POST", {})[0], 200)
         self.assertFalse(any("" in weeks for weeks in self.req("/api/memory")[1]["used"].values()))
+
+    def _publish(self, d):
+        return self.req(f"/api/confluence/publish/{d['id']}", "POST", {"space": "AI", "title": "트리"})
+
+    def test_the_clients_next_autosave_cannot_wipe_what_a_publish_bound(self):
+        d, claim = self._page_draft()                                            # d: the copy the client holds, pages {}
+        t = self.transport
+        t.calls.clear()
+        code, res = self._publish(d)
+        self.assertEqual(code, 200)
+        self.assertEqual(sorted(res["pages"]), [claim["id"]])                      # the route hands both back, so the client can adopt them
+        bound = self.req(f"/api/drafts/{d['id']}")[1]
+        self.assertEqual((bound["confluence"]["page_id"], bound["pages"][claim["id"]]["page_id"]), (res["page_id"], res["pages"][claim["id"]]["page_id"]))
+        d["title"] = "고친 제목"
+        self.assertEqual(self.req(f"/api/drafts/{d['id']}", "PUT", d)[0], 200)      # the stale client copy autosaves
+        after = self.req(f"/api/drafts/{d['id']}")[1]
+        self.assertEqual(after["title"], "고친 제목")                                # the edit went through
+        self.assertEqual((after["pages"], after["confluence"]), (bound["pages"], bound["confluence"]))
+        self.assertEqual(self._publish(d)[0], 200)
+        creates = [c for c in t.calls if c["method"] == "POST" and c["url"].endswith("/rest/api/content")]
+        self.assertEqual(len(creates), 2)                                          # parent + child once; the second publish only updates
+        self.assertEqual(json.loads(creates[1]["body"])["title"], f"{claim['title']} — {self.week}")
+
+    def test_an_edit_made_during_a_publish_survives_it(self):
+        d, claim = self._page_draft()
+        t = self.transport
+        seen = []
+
+        def meanwhile(method, path):                                                # the writer types while the upload runs
+            if method == "PUT" and not seen:
+                seen.append(path)
+                self.httpd.app.drafts.save({"id": d["id"], "title": "업로드 중에 고침"})
+        t.hook = meanwhile
+        self.addCleanup(setattr, t, "hook", None)
+        self.assertEqual(self._publish(d)[0], 200)
+        done = self.req(f"/api/drafts/{d['id']}")[1]
+        self.assertEqual(done["title"], "업로드 중에 고침")
+        self.assertTrue(done["pages"][claim["id"]]["page_id"])
+
+    def test_a_taken_page_title_answers_a_readable_hint(self):
+        d, claim = self._page_draft()
+        t = self.transport
+        t.clash = True
+        self.addCleanup(setattr, t, "clash", False)
+        code, body = self._publish(d)
+        self.assertEqual(code, 502)
+        self.assertIn("같은 제목의 페이지가 이미 있습니다: 트리", json.loads(body)["error"])
+
+    def test_a_draft_that_is_not_a_tree_answers_422_not_a_traceback(self):
+        self.assertEqual(self.req("/api/preview", "POST", {"draft": {"kind": "tree"}})[0], 422)
+        node = {"id": "n-a", "kind": "claim", "title": "t", "text": "", "on": True, "folded": False, "page": False, "stale": False,
+                "src": {}, "marks": [], "tier": "main", "children": ["n-a"]}
+        code, body = self.req("/api/preview", "POST", {"draft": {"kind": "tree", "week": self.week, "nodes": {"n-a": node}, "root": ["n-a"]}})
+        self.assertEqual(code, 422)
+        self.assertIn("error", json.loads(body))
 
 
 if __name__ == "__main__":

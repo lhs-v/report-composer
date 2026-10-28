@@ -95,6 +95,34 @@ class DraftTests(unittest.TestCase):
         self.drafts.save({"id": d["id"], "title": "새 제목"})              # a partial save of a valid tree is fine
         self.assertEqual(self.drafts.get(d["id"])["kind"], "tree")
 
+    def _two_nodes(self):
+        t = self._tree()
+        t["nodes"]["n-b"] = {**t["nodes"]["n-a"], "id": "n-b", "kind": "project", "children": []}
+        t["nodes"]["n-a"]["children"] = ["n-b"]
+        return t
+
+    def test_a_child_listed_twice_is_rejected(self):
+        t = self._two_nodes()
+        self.drafts.create_tree("트리", "2026-W43", t)                                    # n-a > n-b is fine
+        dup = self._two_nodes()
+        dup["nodes"]["n-a"]["children"] = ["n-b", "n-b"]                                  # twice under one parent
+        with self.assertRaises(ValueError):
+            self.drafts.create_tree("트리", "2026-W43", dup)
+        both = self._two_nodes()
+        both["root"] = ["n-a", "n-b"]                                                     # under n-a and at the top level
+        with self.assertRaises(ValueError):
+            self.drafts.create_tree("트리", "2026-W43", both)
+
+    def test_a_children_cycle_is_rejected(self):
+        t = self._two_nodes()
+        t["nodes"]["n-b"]["children"] = ["n-a"]                                           # n-a > n-b > n-a
+        with self.assertRaises(ValueError):
+            self.drafts.create_tree("트리", "2026-W43", t)
+        d = self.drafts.create_tree("트리", "2026-W43", self._two_nodes())
+        with self.assertRaises(ValueError):
+            self.drafts.save({"id": d["id"], "nodes": t["nodes"]})
+        self.assertEqual(self.drafts.get(d["id"])["nodes"]["n-b"]["children"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

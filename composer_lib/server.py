@@ -103,23 +103,26 @@ class App:
         main, pages = to_blocks(draft)
         bound = {k: v for k, v in (draft.get("pages") or {}).items() if k in draft["nodes"]}   # a deleted node's page stays on the wiki, not in the draft
         draft["pages"] = bound
+        # Only the server-owned fields are saved, never the whole `draft` snapshot: the writer keeps typing during a multi-second
+        # upload, and save() merges, so the nodes and text edited meanwhile stay as they are.
+        did = draft["id"]
         page_id, version, url = client.ensure_page(draft.get("confluence"), space, parent_id, title)
-        draft["confluence"] = {"page_id": page_id, "version": version, "url": url, "space": space, "parent_id": parent_id}
-        self.drafts.save(draft)
+        confluence = {"page_id": page_id, "version": version, "url": url, "space": space, "parent_id": parent_id}
+        self.drafts.save({"id": did, "title": title, "confluence": confluence, "pages": bound})
         for pg in pages:
             cid, cver, curl = client.ensure_page(bound.get(pg["node"]), space, page_id, pg["title"])
             bound[pg["node"]] = {"page_id": cid, "version": cver, "url": curl}
-            self.drafts.save(draft)
+            self.drafts.save({"id": did, "pages": bound})
         links = {pg["node"]: bound[pg["node"]]["url"] for pg in pages}
         for pg in pages:
             b = bound[pg["node"]]
             bound[pg["node"]] = client.fill_page(b["page_id"], b["version"], pg["title"], link_stubs(pg["blocks"], links), self.weeks_dir)
-            self.drafts.save(draft)
-        res = {**client.fill_page(page_id, version, title, link_stubs(main, links), self.weeks_dir), "space": space, "parent_id": parent_id}
-        draft["confluence"] = res
-        self.drafts.save(draft)
+            self.drafts.save({"id": did, "pages": bound})
+        confluence = {**client.fill_page(page_id, version, title, link_stubs(main, links), self.weeks_dir), "space": space, "parent_id": parent_id}
+        self.drafts.save({"id": did, "confluence": confluence, "pages": bound})
+        draft["confluence"], draft["pages"] = confluence, bound
         self.note_used(draft)
-        return res
+        return confluence
 
     def export_blocks(self, draft: dict) -> tuple[list[dict], list[list[dict]]]:
         """The blocks of the folder and copy-paste exports, with no child-page stub text in them. A tree's child pages come as separate lists."""
@@ -418,8 +421,11 @@ def make_handler(app: App):
                 except KeyError:
                     return self._json(404, {"error": "no such draft"})
             if p == "/api/preview":
-                blocks = app.export_blocks(body["draft"])[0] if isinstance(body.get("draft"), dict) else (body.get("blocks") or [])
-                xhtml = render(blocks)
+                try:
+                    blocks = app.export_blocks(body["draft"])[0] if isinstance(body.get("draft"), dict) else (body.get("blocks") or [])
+                    xhtml = render(blocks)
+                except (KeyError, TypeError, ValueError, RecursionError) as e:    # a draft body that is not a whole tree (no nodes, a cycle)
+                    return self._json(422, {"error": f"초안 모양이 잘못됐습니다: {type(e).__name__}"})
                 return self._json(200, {"xhtml": xhtml, "error": validate(xhtml)})
             if p == "/api/polish":
                 from .polish import PolishError, polish_draft
@@ -457,7 +463,8 @@ def make_handler(app: App):
 
                 def go(c):
                     if d.get("kind") == "tree":
-                        return app.publish_tree(d, space, parent, c)
+                        res = app.publish_tree(d, space, parent, c)
+                        return {**res, "pages": d["pages"]}          # the client adopts both: its copy of the draft still has pages {}
                     res = c.publish(d, app.weeks_dir, space=space, parent_id=parent)
                     d["confluence"] = res
                     app.drafts.save(d)
@@ -527,6 +534,10 @@ def make_handler(app: App):
             if body is None:
                 return
             body["id"] = m.group(1)
+            stored = app.drafts.get(body["id"])
+            if stored and stored.get("kind") == "tree":
+                body.pop("pages", None)           # the Confluence bindings are the server's: a client copy from before a publish must not wipe them
+                body.pop("confluence", None)
             try:
                 return self._json(200, app.drafts.save(body))
             except ValueError as e:
