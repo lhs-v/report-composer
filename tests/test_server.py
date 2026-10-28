@@ -296,7 +296,9 @@ class ServerV3Tests(unittest.TestCase):
         cls.week = WEEK
         cls.tmp = tempfile.TemporaryDirectory()
         base = Path(cls.tmp.name)
-        cls.cfg = Config(inbox_dir=base / "inbox", workspace_dir=base / "ws", port=0, confluence=ConfluenceConfig())
+        cls.cfg = Config(inbox_dir=base / "inbox", workspace_dir=base / "ws", port=0,
+                         confluence=ConfluenceConfig(base_url="https://wiki.corp", pat="secret", default_space="AI", default_parent_id="77"))
+        cls.transport = FakeTransport()
         cls.weeks = cls.cfg.workspace_dir / "weeks"
         w = cls.weeks / WEEK
         w.mkdir(parents=True)
@@ -311,7 +313,7 @@ class ServerV3Tests(unittest.TestCase):
                     fp.parent.mkdir(parents=True, exist_ok=True)
                     fp.write_bytes(b"0" * fl["bytes"])
         cls.cfg.inbox_dir.mkdir()
-        cls.httpd = make_server("127.0.0.1", 0, cls.cfg)
+        cls.httpd = make_server("127.0.0.1", 0, cls.cfg, transport=cls.transport)
         cls.port = cls.httpd.server_address[1]
         threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
 
@@ -397,6 +399,64 @@ class ServerV3Tests(unittest.TestCase):
         lib = self.req("/api/library")[1]
         week = next(w for w in lib if w["week"] == self.week)
         self.assertTrue(any(a.get("picked") and a["src"] == f"{self.week}/picked/pick-1.png" for a in week["assets"]))
+
+    def _page_draft(self):
+        code, d = self.req("/api/drafts/tree", "POST", {"title": "트리", "week": self.week})
+        self.assertEqual(code, 200)
+        claim = next(n for n in d["nodes"].values() if n["kind"] == "claim" and n["src"]["chapter"] == "C-U-e980fb09-10211943")
+        claim["page"] = True
+        self.assertEqual(self.req(f"/api/drafts/{d['id']}", "PUT", d)[0], 200)
+        return d, claim
+
+    def test_publishing_a_tree_binds_every_page_as_it_is_made_and_a_retry_updates_instead_of_creating(self):
+        from tests.test_library_v3 import R_PAGE
+        d, claim = self._page_draft()
+        t = self.transport
+        t.calls.clear()
+        t.fail_at = 2                                    # 0 parent create, 1 child create, 2 the child's attachment lookup
+        code, _ = self.req(f"/api/confluence/publish/{d['id']}", "POST", {"space": "AI", "title": "트리"})
+        self.assertEqual(code, 502)
+        saved = self.req(f"/api/drafts/{d['id']}")[1]
+        self.assertTrue(saved["confluence"]["page_id"])
+        self.assertTrue(saved["pages"][claim["id"]]["page_id"])
+        self.assertNotEqual(saved["confluence"]["page_id"], saved["pages"][claim["id"]]["page_id"])
+        code, _ = self.req(f"/api/confluence/publish/{d['id']}", "POST", {"space": "AI", "title": "트리"})
+        self.assertEqual(code, 200)
+        creates = [c for c in t.calls if c["method"] == "POST" and c["url"].endswith("/rest/api/content")]
+        self.assertEqual(len(creates), 2)                                           # parent + child, nothing new on the retry
+        self.assertEqual(json.loads(creates[1]["body"])["ancestors"][0]["id"], saved["confluence"]["page_id"])
+        done = self.req(f"/api/drafts/{d['id']}")[1]
+        self.assertEqual(done["confluence"]["page_id"], saved["confluence"]["page_id"])
+        self.assertEqual(done["pages"][claim["id"]]["page_id"], saved["pages"][claim["id"]]["page_id"])
+        parent_put = [c for c in t.calls if c["method"] == "PUT" and c["url"].endswith("/content/" + done["confluence"]["page_id"])][-1]
+        body = json.loads(parent_put["body"])["body"]["storage"]["value"]
+        self.assertIn(done["pages"][claim["id"]]["url"], body)                      # the stub became a link to the child page
+        self.assertNotIn("[[page:", body)
+        self.assertEqual(self.req("/api/memory")[1]["used"][R_PAGE], [self.week])
+
+    def test_publishing_forgets_page_bindings_of_deleted_nodes(self):
+        d, claim = self._page_draft()
+        d["pages"]["n-gone"] = {"page_id": "999", "version": 3, "url": "https://wiki.corp/x"}
+        self.assertEqual(self.req(f"/api/drafts/{d['id']}", "PUT", d)[0], 200)
+        self.assertEqual(self.req(f"/api/confluence/publish/{d['id']}", "POST", {"space": "AI"})[0], 200)
+        self.assertEqual(sorted(self.req(f"/api/drafts/{d['id']}")[1]["pages"]), [claim["id"]])
+
+    def test_export_of_a_tree_writes_child_pages_without_stub_text_and_records_the_use(self):
+        import os
+        from tests.test_library_v3 import R_FIG
+        d, claim = self._page_draft()
+        code, res = self.req(f"/api/export/{d['id']}", "POST", {})
+        self.assertEqual(code, 200)
+        folder = Path(res["folder"])
+        self.assertNotIn("[[page:", (folder / "body.html").read_text(encoding="utf-8"))
+        self.assertIn("등급 체계 결론", (folder / "page-1.html").read_text(encoding="utf-8"))
+        self.assertFalse((folder / "page-2.html").exists())
+        self.assertNotIn("[[page:", (folder / "paste.html").read_text(encoding="utf-8"))
+        self.assertTrue(any(f.endswith("preview-top.png") for f in os.listdir(folder)))      # the child page's picture travelled too
+        self.assertEqual(self.req("/api/memory")[1]["used"][R_FIG], [self.week])
+        code, pasted = self.req(f"/api/paste/{d['id']}", "POST", {})
+        self.assertEqual(code, 200)
+        self.assertNotIn("[[page:", pasted["html"])
 
 
 if __name__ == "__main__":

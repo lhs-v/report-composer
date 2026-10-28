@@ -2,7 +2,7 @@
 import copy
 import unittest
 
-from composer_lib.outline import build_tree, node_id, rule_summary, to_blocks
+from composer_lib.outline import build_tree, link_stubs, node_id, rule_summary, to_blocks
 
 P = "C--Claude-sp-mobile"
 PKG = {
@@ -290,3 +290,21 @@ class ToBlocksTests(unittest.TestCase):
         rec["src"]["week"] = None                                                         # no week of its own: the draft's week
         main, _ = to_blocks(d)
         self.assertEqual(next(b for b in main if b["type"] == "image")["src"], "2026-W43/records/sp-mobile/R-new/preview-top.png")
+
+
+class LinkStubTests(unittest.TestCase):
+    def test_stubs_become_links_or_disappear(self):
+        blocks = [{"id": "x", "type": "paragraph", "text": "비교 결론 — 리드. [[page:n-1]]", "source_ref": None}]
+        self.assertEqual(link_stubs(blocks, {"n-1": "https://wiki/p/1"})[0]["text"], "비교 결론 — 리드. [자세히](https://wiki/p/1)")
+        self.assertEqual(link_stubs(blocks, {})[0]["text"], "비교 결론 — 리드.")
+        self.assertEqual(blocks[0]["text"], "비교 결론 — 리드. [[page:n-1]]")      # input untouched
+
+    def test_other_blocks_and_real_node_ids_pass_through(self):
+        d = tree_draft()
+        claim = next(n for n in d["nodes"].values() if n["kind"] == "claim" and n["src"]["chapter"] == "C-U-1")
+        claim["page"] = True
+        main, _ = to_blocks(d)
+        out = link_stubs(main, {})
+        self.assertEqual(len(out), len(main))
+        self.assertFalse(any("[[page:" in (b.get("text") or "") for b in out))
+        self.assertEqual([b for b in out if "text" not in b], [b for b in main if "text" not in b])

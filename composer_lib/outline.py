@@ -284,3 +284,16 @@ def to_blocks(draft: dict) -> tuple[list[dict], list[dict]]:
         main.append({"id": "b-reference-0", "type": "heading", "level": 2, "text": "참고", "source_ref": None})
         main.extend(reference)
     return main, pages
+
+
+_STUB = re.compile(r"\s*\[\[page:(n-[0-9a-z]+)\]\]")
+
+
+def link_stubs(blocks: list[dict], links: dict[str, str]) -> list[dict]:
+    """Turn the `[[page:<id>]]` stub of a child page into a markdown link when its address is known, or take it away. The input stays as it is."""
+    out = []
+    for b in blocks:
+        if b.get("type") == "paragraph" and "[[page:" in (b.get("text") or ""):
+            b = {**b, "text": _STUB.sub(lambda m: f" [자세히]({links[m.group(1)]})" if m.group(1) in links else "", b["text"]).strip()}
+        out.append(b)
+    return out

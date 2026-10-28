@@ -1,4 +1,5 @@
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,33 +9,56 @@ from composer_lib.confluence import ConfluenceClient, ConfluenceError
 
 
 class FakeTransport:
-    """Records every call; answers from a small script keyed by (method, path prefix)."""
+    """Records every call; answers from a small script keyed by (method, path). The first created page is 900, the next 901…
+    `fail_at` (0-based index into `calls`) makes that one call answer 500, once."""
 
-    def __init__(self, fail_status=None):
+    def __init__(self, fail_status=None, fail_at=None):
         self.calls = []
         self.fail_status = fail_status
-        self.page_version = 1
+        self.fail_at = fail_at
+        self.page_version = 1                      # version of page 900
+        self.versions = {}                         # version of every other page, and of 900 once it is updated
+        self.created = 0
         self.attachments = {}
+
+    def _page_json(self, pid, version):
+        return json.dumps({"id": pid, "title": "t", "version": {"number": version}, "space": {"key": "AI"},
+                           "_links": {"webui": f"/pages/viewpage.action?pageId={pid}"}}).encode()
 
     def __call__(self, method, url, headers, body):
         self.calls.append({"method": method, "url": url, "headers": headers, "body": body})
         path = url.split("/rest/api/", 1)[1]
         if self.fail_status:
             return self.fail_status, {}, json.dumps({"statusCode": self.fail_status, "message": "권한이 없습니다"}).encode()
+        if self.fail_at is not None and len(self.calls) - 1 == self.fail_at:
+            self.fail_at = None
+            return 500, {}, json.dumps({"statusCode": 500, "message": "서버 오류"}).encode()
         if method == "POST" and path == "content":
-            return 200, {}, json.dumps({"id": "900", "version": {"number": 1}, "_links": {"webui": "/pages/viewpage.action?pageId=900"}}).encode()
-        if method == "GET" and path.startswith("content/900?"):
-            return 200, {}, json.dumps({"id": "900", "title": "t", "version": {"number": self.page_version}, "space": {"key": "AI"},
-                                        "_links": {"webui": "/pages/viewpage.action?pageId=900"}}).encode()
-        if method == "GET" and path.startswith("content/900/child/attachment"):
-            return 200, {}, json.dumps({"results": [{"id": aid, "title": name} for name, aid in self.attachments.items()]}).encode()
-        if method == "POST" and path.startswith("content/900/child/attachment"):
-            name = body.split(b'filename="', 1)[1].split(b'"', 1)[0].decode()
-            aid = self.attachments.setdefault(name, f"att-{len(self.attachments) + 1}")
-            return 200, {}, json.dumps({"results": [{"id": aid, "title": name}]}).encode()
-        if method == "PUT" and path == "content/900":
-            self.page_version = json.loads(body)["version"]["number"]
-            return 200, {}, json.dumps({"id": "900", "version": {"number": self.page_version}, "_links": {"webui": "/pages/viewpage.action?pageId=900"}}).encode()
+            pid = str(900 + self.created)
+            self.created += 1
+            if pid == "900":
+                return 200, {}, self._page_json(pid, self.page_version)
+            self.versions[pid] = 1
+            return 200, {}, self._page_json(pid, 1)
+        page = re.match(r"content/(\d+)(/child/attachment.*|\?.*)?$", path)
+        if page:
+            pid, rest = page.group(1), page.group(2) or ""
+            version = self.page_version if pid == "900" else self.versions.get(pid, 1)
+            if method == "GET" and rest.startswith("?"):
+                return 200, {}, self._page_json(pid, version)
+            if method == "GET" and rest.startswith("/child/attachment"):
+                return 200, {}, json.dumps({"results": [{"id": aid, "title": name} for name, aid in self.attachments.items()]}).encode()
+            if method == "POST" and rest.startswith("/child/attachment"):
+                name = body.split(b'filename="', 1)[1].split(b'"', 1)[0].decode()
+                aid = self.attachments.setdefault(name, f"att-{len(self.attachments) + 1}")
+                return 200, {}, json.dumps({"results": [{"id": aid, "title": name}]}).encode()
+            if method == "PUT" and rest == "":
+                number = json.loads(body)["version"]["number"]
+                if pid == "900":
+                    self.page_version = number
+                else:
+                    self.versions[pid] = number
+                return 200, {}, self._page_json(pid, number)
         if method == "GET" and path.startswith("user/current"):
             return 200, {}, json.dumps({"username": "hs.lee", "displayName": "이현상", "email": "hs@corp.com"}).encode()
         if method == "GET" and path.startswith("space"):

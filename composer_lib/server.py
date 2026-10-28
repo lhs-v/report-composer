@@ -85,6 +85,61 @@ class App:
         return draft.get("blocks") or []
 
     @staticmethod
+    def used_ids(draft: dict) -> list[str]:
+        """The records and chapters of every node that is on (an off node takes its subtree with it)."""
+        nodes, ids = draft.get("nodes") or {}, set()
+
+        def walk(nid: str) -> None:
+            n = nodes.get(nid)
+            if not n or not n.get("on"):
+                return
+            src = n.get("src") or {}
+            ids.update(i for i in (src.get("record"), src.get("chapter")) if i and i != "loose")
+            for c in n.get("children") or []:
+                walk(c)
+        for rid in draft.get("root") or []:
+            walk(rid)
+        return sorted(ids)
+
+    def publish_tree(self, draft: dict, space: str, parent_id: str | None, client: ConfluenceClient) -> dict:
+        """Parent page, one child page per `page` node, then the parent again with links to them. Every page id is saved the moment
+        the page exists, so a failure anywhere leaves a draft whose retry updates those pages instead of making new ones."""
+        from .outline import link_stubs, to_blocks
+        title = draft.get("title") or "제목 없음"
+        main, pages = to_blocks(draft)
+        bound = {k: v for k, v in (draft.get("pages") or {}).items() if k in draft["nodes"]}   # a deleted node's page stays on the wiki, not in the draft
+        draft["pages"] = bound
+        page_id, version, url = client.ensure_page(draft.get("confluence"), space, parent_id, title)
+        draft["confluence"] = {"page_id": page_id, "version": version, "url": url, "space": space, "parent_id": parent_id}
+        self.drafts.save(draft)
+        for pg in pages:
+            cid, cver, curl = client.ensure_page(bound.get(pg["node"]), space, page_id, pg["title"])
+            bound[pg["node"]] = {"page_id": cid, "version": cver, "url": curl}
+            self.drafts.save(draft)
+        links = {pg["node"]: bound[pg["node"]]["url"] for pg in pages}
+        for pg in pages:
+            b = bound[pg["node"]]
+            bound[pg["node"]] = client.fill_page(b["page_id"], b["version"], pg["title"], link_stubs(pg["blocks"], links), self.weeks_dir)
+            self.drafts.save(draft)
+        res = {**client.fill_page(page_id, version, title, link_stubs(main, links), self.weeks_dir), "space": space, "parent_id": parent_id}
+        draft["confluence"] = res
+        self.drafts.save(draft)
+        self.memory.mark_used(self.used_ids(draft), draft.get("week") or "")
+        return res
+
+    def export_blocks(self, draft: dict) -> tuple[list[dict], list[list[dict]]]:
+        """The blocks of the folder and copy-paste exports, with no child-page stub text in them. A tree's child pages come as separate lists."""
+        if draft.get("kind") != "tree":
+            return draft.get("blocks") or [], []
+        from .outline import link_stubs, to_blocks
+        main, pages = to_blocks(draft)
+        return link_stubs(main, {}), [link_stubs(pg["blocks"], {}) for pg in pages]
+
+    def note_used(self, draft: dict) -> None:
+        if draft.get("kind") == "tree":
+            self.memory.mark_used(self.used_ids(draft), draft.get("week") or "")
+
+    @staticmethod
     def week_updated(folder: Path) -> float:
         times = [p.stat().st_mtime for p in [folder / "outcomes.json", *folder.glob(".inbox*.json")] if p.exists()]
         return max(times) if times else folder.stat().st_mtime
@@ -102,18 +157,22 @@ class App:
         if folder.exists():
             shutil.rmtree(folder)
         folder.mkdir(parents=True)
-        blocks = self.blocks_of(draft)
+        blocks, pages = self.export_blocks(draft)
         copied = []
-        for name, src in attachments_for(blocks).items():
+        for name, src in attachments_for(blocks + [b for pg in pages for b in pg]).items():
             fp = package_file(self.weeks_dir, src)
             if fp:
                 shutil.copy2(fp, folder / name)
                 copied.append(name)
         (folder / "body.html").write_text(render(blocks), encoding="utf-8")
+        for n, pg in enumerate(pages, 1):
+            (folder / f"page-{n}.html").write_text(render(pg), encoding="utf-8")
         doc, manual = paste_html(draft.get("title") or "제목 없음", blocks, self.weeks_dir)
         (folder / "paste.html").write_text(doc, encoding="utf-8")
         (folder / "읽어주세요.txt").write_text(readme_text(draft.get("title") or "제목 없음", manual), encoding="utf-8")
-        return {"folder": str(folder), "files": copied, "paste_html": str(folder / "paste.html"), "manual_files": manual}
+        self.note_used(draft)
+        return {"folder": str(folder), "files": copied, "paste_html": str(folder / "paste.html"), "manual_files": manual,
+                "pages": [f"page-{n}.html" for n in range(1, len(pages) + 1)]}
 
     def save_picked_image(self, week: str, data_uri: str, name: str = "") -> str:
         """Store an image picked out of a result page as a package-relative file so it can be attached later."""
@@ -135,7 +194,8 @@ class App:
         return f"{week}/picked/{fname}"
 
     def paste(self, draft: dict) -> dict:
-        doc, manual = paste_html(draft.get("title") or "제목 없음", self.blocks_of(draft), self.weeks_dir)
+        doc, manual = paste_html(draft.get("title") or "제목 없음", self.export_blocks(draft)[0], self.weeks_dir)
+        self.note_used(draft)
         return {"html": doc, "manual_files": manual}
 
 
@@ -393,11 +453,14 @@ def make_handler(app: App):
                 parent = body.get("parent_id") or app.cfg.confluence.default_parent_id or None
                 if not space:
                     return self._json(400, {"error": "스페이스 키가 필요합니다."})
-                err = validate(render(app.blocks_of(d)))
+                main, pages = app.export_blocks(d)
+                err = next((e for e in (validate(render(bl)) for bl in [main, *pages]) if e), None)
                 if err:
                     return self._json(400, {"error": f"본문 변환 오류: {err}"})
 
                 def go(c):
+                    if d.get("kind") == "tree":
+                        return app.publish_tree(d, space, parent, c)
                     res = c.publish(d, app.weeks_dir, space=space, parent_id=parent)
                     d["confluence"] = res
                     app.drafts.save(d)

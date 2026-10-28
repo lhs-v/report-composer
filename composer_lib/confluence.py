@@ -1,7 +1,8 @@
 """Confluence Data Center REST client (PAT bearer auth) built on urllib, with an injectable transport.
 
-publish(): create the page if the draft has none → upload every referenced file as an attachment (replace when
-a file of that name already exists) → PUT the storage-format body with the attachment references. The PAT is
+ensure_page() creates the page if there is none; fill_page() uploads every referenced file as an attachment (replace when
+a file of that name already exists) and PUTs the storage-format body with the attachment references; publish() is both
+for a block draft. The PAT is
 only ever placed in the Authorization header; it is excluded from repr() and error messages.
 """
 from __future__ import annotations
@@ -151,24 +152,27 @@ class ConfluenceClient:
         results = res.get("results") or ([res] if res.get("id") else [])
         return str(results[0].get("id")) if results else (existing_att_id or "")
 
-    def publish(self, draft: dict, weeks_dir: Path, space: str, parent_id: str | None) -> dict:
-        """Create or update the page for `draft`, uploading the files its blocks reference. Returns {page_id, version, url}."""
-        weeks_dir = Path(weeks_dir)
-        title = draft.get("title") or "제목 없음"
-        binding = draft.get("confluence") or {}
-        if binding.get("page_id"):
+    def ensure_page(self, binding: dict | None, space: str, parent_id: str | None, title: str) -> tuple[str, int, str]:
+        """The page a binding points at (its current version), or a new placeholder page under `parent_id`. Returns (page_id, version, url)."""
+        if (binding or {}).get("page_id"):
             page = self.get_page(binding["page_id"])
-            page_id, version = page["id"], page["version"]
-        else:
-            created = self.create_page(space, parent_id, title, "<p>업로드 중입니다…</p>")
-            page_id, version = created["id"], created["version"]
+            return page["id"], page["version"], page["url"]
+        created = self.create_page(space, parent_id, title, "<p>업로드 중입니다…</p>")
+        return created["id"], created["version"], created["url"]
 
+    def fill_page(self, page_id: str, version: int, title: str, blocks: list[dict], weeks_dir: Path) -> dict:
+        """Upload the files `blocks` reference to this page (replacing same-named ones), then PUT the body. Returns {page_id, version, url}."""
         existing = self.list_attachments(page_id)
-        for filename, src in attachments_for(draft.get("blocks") or []).items():
-            fp = package_file(weeks_dir, src)
+        for filename, src in attachments_for(blocks).items():
+            fp = package_file(Path(weeks_dir), src)
             if fp is None:
                 continue
             self.upload_attachment(page_id, filename, fp.read_bytes(), existing.get(filename))
+        updated = self.update_page(page_id, title, render(blocks), version + 1)
+        return {"page_id": page_id, "version": updated["version"], "url": updated["url"]}
 
-        updated = self.update_page(page_id, title, render(draft.get("blocks") or []), version + 1)
-        return {"page_id": page_id, "version": updated["version"], "url": updated["url"], "space": space, "parent_id": parent_id}
+    def publish(self, draft: dict, weeks_dir: Path, space: str, parent_id: str | None) -> dict:
+        """Create or update the page for a block draft, uploading the files its blocks reference. Returns {page_id, version, url, space, parent_id}."""
+        title = draft.get("title") or "제목 없음"
+        page_id, version, _ = self.ensure_page(draft.get("confluence"), space, parent_id, title)
+        return {**self.fill_page(page_id, version, title, draft.get("blocks") or [], weeks_dir), "space": space, "parent_id": parent_id}

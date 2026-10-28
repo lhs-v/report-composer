@@ -268,7 +268,7 @@ window.Drawer = (() => {
     const id = Keys.insert(n, land.parent, land.index);
     if (!id) return;
     landed(id);
-    if (payload.node?.kind === "claim" && payload.node.children?.length) toast("자식은 함께 오지 않아요"); else Keys.hint("drag");
+    if (payload.node?.kind === "claim" && payload.node.children?.length) toast("자식은 함께 오지 않아요");
   }
 
   function bindDrag() {
