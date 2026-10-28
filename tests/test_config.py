@@ -44,6 +44,13 @@ class ConfigTests(unittest.TestCase):
             pub = load_config(p).public()
             self.assertIn("providers", pub); self.assertEqual(pub["llm"]["provider"], "gemini")
 
+    def test_save_llm_creates_a_missing_config_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "sub" / "composer.config.json"
+            save_llm(p, LlmConfig(provider="claude"))
+            self.assertEqual(json.loads(p.read_text(encoding="utf-8"))["llm"]["provider"], "claude")
+            self.assertEqual(load_config(p).llm.provider, "claude")
+
 
 if __name__ == "__main__":
     unittest.main()

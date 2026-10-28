@@ -1,12 +1,15 @@
 import json
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 from composer_lib.config import Config, ConfluenceConfig
+from composer_lib.llm import FakeProvider, FallbackProvider
+from composer_lib.llmjobs import JobQueue
 from composer_lib.server import make_server
 from tests.test_confluence import FakeTransport
 from tests.test_library import OUTCOMES
@@ -296,7 +299,7 @@ class ServerV3Tests(unittest.TestCase):
         cls.week = WEEK
         cls.tmp = tempfile.TemporaryDirectory()
         base = Path(cls.tmp.name)
-        cls.cfg = Config(inbox_dir=base / "inbox", workspace_dir=base / "ws", port=0,
+        cls.cfg = Config(inbox_dir=base / "inbox", workspace_dir=base / "ws", port=0, path=base / "composer.config.json",
                          confluence=ConfluenceConfig(base_url="https://wiki.corp", pat="secret", default_space="AI", default_parent_id="77"))
         cls.transport = FakeTransport()
         cls.weeks = cls.cfg.workspace_dir / "weeks"
@@ -315,6 +318,7 @@ class ServerV3Tests(unittest.TestCase):
         cls.cfg.inbox_dir.mkdir()
         cls.httpd = make_server("127.0.0.1", 0, cls.cfg, transport=cls.transport)
         cls.port = cls.httpd.server_address[1]
+        cls.default_jobs = cls.httpd.app.llm_jobs
         threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
 
     @classmethod
@@ -322,6 +326,9 @@ class ServerV3Tests(unittest.TestCase):
         cls.httpd.shutdown()
         cls.httpd.server_close()
         cls.tmp.cleanup()
+
+    def setUp(self):
+        self.httpd.app.llm_jobs = self.default_jobs          # a test that plugs in its own queue does not leak it
 
     def req(self, path, method="GET", data=None, headers=None):
         body = json.dumps(data).encode() if isinstance(data, (dict, list)) else data
@@ -539,6 +546,97 @@ class ServerV3Tests(unittest.TestCase):
         code, body = self.req("/api/preview", "POST", {"draft": {"kind": "tree", "week": self.week, "nodes": {"n-a": node}, "root": ["n-a"]}})
         self.assertEqual(code, 422)
         self.assertIn("error", json.loads(body))
+
+
+    def _tree(self):
+        d = self.req("/api/drafts/tree", "POST", {"title": "t", "week": self.week})[1]
+        return d, next(n for n in d["nodes"].values() if n["kind"] == "claim")
+
+    def test_llm_routes_queue_a_job_and_report_it(self):
+        self.httpd.app.llm_jobs = JobQueue(lambda: FallbackProvider(FakeProvider(["새 본문"]), None))
+        d, claim = self._tree()
+        code, job = self.req("/api/llm/jobs", "POST", {"kind": "node", "draft_id": d["id"], "node_id": claim["id"], "style": "brief"})
+        self.assertEqual(code, 202)
+        for _ in range(100):
+            j = self.req(f"/api/llm/jobs/{job['job']['id']}")[1]
+            if j["status"] == "done": break
+            time.sleep(0.02)
+        self.assertEqual(j["result"]["value"], "새 본문"); self.assertEqual(j["result"]["before"], claim["text"])
+        self.assertEqual(self.req("/api/llm/jobs/nope")[0], 404)
+        self.assertEqual(self.req("/api/llm/jobs", "POST", {"kind": "poem", "draft_id": d["id"]})[0], 400)
+        self.assertEqual(self.req("/api/llm/jobs", "POST", {"kind": "node", "draft_id": "d-ffff", "node_id": claim["id"]})[0], 404)
+        self.assertEqual(self.req("/api/llm/jobs", "POST", {"kind": "node", "draft_id": "nope"})[0], 400)
+
+    def test_llm_cancel_route(self):
+        gate = threading.Event()
+
+        class Slow(FakeProvider):
+            def complete(self, prompt, *, system=None):
+                gate.wait(2); return super().complete(prompt, system=system)
+        self.addCleanup(gate.set)
+        self.httpd.app.llm_jobs = JobQueue(lambda: FallbackProvider(Slow(["늦은 답"]), None))
+        d, claim = self._tree()
+        job = self.req("/api/llm/jobs", "POST", {"kind": "node", "draft_id": d["id"], "node_id": claim["id"]})[1]["job"]
+        self.assertEqual(self.req(f"/api/llm/jobs/{job['id']}/cancel", "POST", {}), (200, {"cancelled": True}))
+        self.assertEqual(self.req(f"/api/llm/jobs/{job['id']}")[1]["status"], "cancelled")
+        self.assertEqual(self.req("/api/llm/jobs/nope/cancel", "POST", {}), (200, {"cancelled": False}))
+
+    def test_llm_providers_and_config_round_trip(self):
+        code, p = self.req("/api/llm/providers")
+        self.assertEqual(code, 200); self.assertIn("claude", p["providers"])
+        self.assertEqual(set(p["available"]), {"claude", "gemini", "codex"}); self.assertIn("ready", p)
+        code, saved = self.req("/api/llm/config", "PUT", {"provider": "gemini", "command": "", "model": "gemini-3.8-flash", "fallback": None})
+        self.assertEqual(code, 200); self.assertEqual(saved["llm"]["provider"], "gemini")
+        self.assertEqual(self.cfg.llm.provider, "gemini")
+        on_disk = json.loads(self.cfg.path.read_text(encoding="utf-8"))
+        self.assertEqual(on_disk["llm"]["model"], "gemini-3.8-flash")
+        code, saved = self.req("/api/llm/config", "PUT", {"provider": "claude", "fallback": {"provider": "gemini", "model": "x"}})
+        self.assertEqual((code, saved["llm"]["fallback"]["provider"]), (200, "gemini"))
+        for bad in ({"provider": "banana"}, {"provider": "claude", "command": 5}, {"provider": "claude", "fallback": {"provider": "banana"}},
+                    {"provider": "claude", "fallback": "gemini"}):
+            self.assertEqual(self.req("/api/llm/config", "PUT", bad)[0], 400, bad)
+        self.assertEqual(self.cfg.llm.provider, "claude")                       # a refused change leaves the config alone
+
+    def test_llm_config_without_a_config_path_is_a_409(self):
+        app = self.httpd.app
+        path, app.cfg.path = app.cfg.path, None
+        self.addCleanup(setattr, app.cfg, "path", path)
+        self.assertEqual(self.req("/api/llm/config", "PUT", {"provider": "claude"})[0], 409)
+
+    def test_llm_test_call_uses_the_main_provider(self):
+        app = self.httpd.app
+        app.llm_provider = lambda: FallbackProvider(FakeProvider(["OK"]), FakeProvider(["fallback"]))
+        self.addCleanup(delattr, app, "llm_provider")
+        code, r = self.req("/api/llm/test", "POST", {})
+        self.assertEqual((code, r["ok"], r["answer"]), (200, True, "OK")); self.assertIn("ms", r)
+        app.llm_provider = lambda: None
+        code, r = self.req("/api/llm/test", "POST", {})
+        self.assertEqual((code, r["ok"]), (200, False)); self.assertTrue(r["error"])
+        app.llm_provider = lambda: FallbackProvider(FakeProvider([]), None)
+        self.assertFalse(self.req("/api/llm/test", "POST", {})[1]["ok"])
+
+    def test_jobs_are_refused_without_a_provider(self):
+        self.httpd.app.llm_jobs = JobQueue(lambda: None)
+        d = self.req("/api/drafts/tree", "POST", {"title": "t", "week": self.week})[1]
+        self.assertEqual(self.req("/api/llm/jobs", "POST", {"kind": "summary", "draft_id": d["id"]})[0], 409)
+
+    def test_llm_routes_answer_the_composer_window_only(self):
+        code, _ = self.req("/api/llm/providers", headers={"Host": "localhost:%d" % self.port})
+        self.assertEqual(code, 403)
+        self.assertEqual(self.req("/api/llm/config", "PUT", {"provider": "claude"}, headers={"Origin": "http://evil.example"})[0], 403)
+
+    def test_a_default_app_gets_a_real_provider_factory(self):
+        app = self.httpd.app
+        cfg = app.cfg.llm
+        saved = (cfg.provider, cfg.command, cfg.model, cfg.fallback)
+        self.addCleanup(lambda: (setattr(cfg, "provider", saved[0]), setattr(cfg, "command", saved[1]),
+                                 setattr(cfg, "model", saved[2]), setattr(cfg, "fallback", saved[3])))
+        cfg.provider, cfg.command, cfg.model, cfg.fallback = "", "", "", None
+        self.assertIsNone(app.llm_provider())
+        cfg.provider, cfg.command = "claude", "no-such-claude-binary-xyz"
+        prov = app.llm_provider()
+        self.assertEqual((prov.primary.spec.provider, str(prov.primary.cwd), prov.fallback), ("claude", str(app.cfg.workspace_dir), None))
+        self.assertFalse(app.llm_jobs.ready())                                  # the command is not on this machine
 
 
 if __name__ == "__main__":

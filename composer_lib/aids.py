@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 
+from .outline import LEDGER_LABEL
 from .polish import DEFAULT_STYLE, STYLES
 
 KINDS = ("node", "summary", "caption")
@@ -78,7 +79,7 @@ def _child_lines(draft: dict, node: dict, depth: int = 0) -> list[str]:
         elif kind == "flow":
             out += [f"{pad}- 흐름: {_flow_line(i)}" for i in c.get("items") or [] if _flow_line(i)]
         elif kind == "ledger":
-            out += [f"{pad}- {i.get('kind') or ''}: {i.get('text')}" for i in c.get("items") or [] if i.get("text")]
+            out += [f"{pad}- {LEDGER_LABEL.get(i.get('kind'), i.get('kind') or '')}: {i.get('text')}" for i in c.get("items") or [] if i.get("text")]
         else:
             out.append(f"{pad}- {c.get('title') or ''}" + (f": {c['text']}" if str(c.get("text") or "").strip() else ""))
             out += _child_lines(draft, c, depth + 1)
@@ -175,7 +176,7 @@ def build(kind: str, draft: dict, node_id: str | None, style: str = DEFAULT_STYL
 
 
 def _unfence(answer: str) -> str:
-    text = (answer or "").strip()
+    text = (answer or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     m = _FENCE.search(text)
     if m:
         return m.group(1).strip()

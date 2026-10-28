@@ -12,6 +12,9 @@ Routes
   POST /api/open {path}       open a workspace path in Explorer
   GET  /api/outline/<week>    draft tree      POST /api/drafts/tree {title, week}
   GET  /api/memory            captions/uses   PUT /api/memory/caption {record, text, week}
+  GET  /api/llm/providers     vocabulary, settings, what is installed, ready      PUT /api/llm/config {provider, command, model, fallback}
+  POST /api/llm/test          ask the main provider once                          POST /api/llm/jobs {kind, draft_id, node_id, style} -> 202 {job}
+  GET  /api/llm/jobs/<id>     job record                                          POST /api/llm/jobs/<id>/cancel
 """
 from __future__ import annotations
 
@@ -25,15 +28,18 @@ import sys
 import threading
 import time
 import urllib.parse
+from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import __version__
-from .config import Config
+from .config import Config, LlmConfig, save_llm
 from .confluence import ConfluenceClient, ConfluenceError
 from .drafts import Drafts
 from .inbox import process_once, scan
 from .library import build_library
+from .llm import PROVIDERS, CliProvider, FallbackProvider, LlmError, ProviderSpec
+from .llmjobs import NO_PROVIDER, JobQueue
 from .memory import Memory
 from .pastehtml import paste_html, readme_text
 from .storage import attachment_name, attachments_for, package_file, render, validate
@@ -55,6 +61,28 @@ class App:
         self.memory = Memory(cfg.workspace_dir / "memory.json")
         self.lock = threading.Lock()
         self.last_inbox: dict = {"checked": None, "extracted": [], "error": None}
+        self.llm_jobs = JobQueue(self.llm_provider)
+
+    def llm_provider(self) -> FallbackProvider | None:
+        """The writing-aid provider from the current `llm` settings (built per call, so a settings change reaches the next job).
+        None when no provider is chosen or the chosen name is not in the vocabulary."""
+        llm = self.cfg.llm
+        if not llm.provider:
+            return None
+        try:
+            primary = CliProvider(ProviderSpec(llm.provider, llm.command, llm.model), cwd=self.cfg.workspace_dir)
+            fallback = CliProvider(llm.fallback, cwd=self.cfg.workspace_dir) if llm.fallback else None
+        except LlmError:
+            return None
+        return FallbackProvider(primary, fallback)
+
+    def llm_available(self) -> dict:
+        """Which of the known command-line tools can be found on this machine (the chosen command counts for its own provider)."""
+        llm, out = self.cfg.llm, {}
+        for name in PROVIDERS:
+            command = llm.command if name == llm.provider else (llm.fallback.command if llm.fallback and llm.fallback.provider == name else "")
+            out[name] = CliProvider(ProviderSpec(name, command)).available()
+        return out
 
     def inbox_tick(self) -> None:
         try:
@@ -257,6 +285,33 @@ def _safe_child(base: Path, rel: str) -> Path | None:
     return target if target.is_file() else None
 
 
+def llm_from_body(body: dict) -> LlmConfig:
+    """The `llm` settings a PUT carries; ValueError (with the reason) for a name outside the vocabulary or a value that is not text."""
+    def text(d: dict, key: str) -> str:
+        v = d.get(key)
+        if v is None:
+            return ""
+        if not isinstance(v, str) or len(v) > 300:
+            raise ValueError(f"{key}은(는) 300자 이하의 문자열이어야 합니다")
+        return v.strip()
+
+    def spec(d: dict, what: str) -> ProviderSpec | None:
+        name = text(d, "provider")
+        if not name:
+            return None
+        if name not in PROVIDERS:
+            raise ValueError(f"{what}: 알 수 없는 공급자입니다: {name} ({', '.join(PROVIDERS)} 중에서 고르세요)")
+        return ProviderSpec(name, text(d, "command"), text(d, "model"))
+    main = spec(body, "provider")
+    fb = body.get("fallback")
+    if fb is not None and not isinstance(fb, dict):
+        raise ValueError("fallback은(는) 객체이거나 null이어야 합니다")
+    fallback = spec(fb, "fallback") if fb else None
+    if main is None:
+        return LlmConfig()
+    return LlmConfig(provider=main.provider, command=main.command, model=main.model, fallback=fallback)
+
+
 def make_handler(app: App):
     class Handler(BaseHTTPRequestHandler):
         server_version = f"composer/{__version__}"
@@ -376,6 +431,13 @@ def make_handler(app: App):
             if m:
                 d = app.drafts.get(m.group(1))
                 return self._json(200, d) if d else self._json(404, {"error": "no such draft"})
+            if p == "/api/llm/providers":
+                return self._json(200, {"providers": PROVIDERS, "llm": asdict(app.cfg.llm), "available": app.llm_available(),
+                                        "ready": app.llm_jobs.ready()})
+            m = re.fullmatch(r"/api/llm/jobs/([\w-]+)", p)
+            if m:
+                job = app.llm_jobs.get(m.group(1))
+                return self._json(200, job) if job else self._json(404, {"error": "no such job"})
             if p == "/api/confluence/whoami":
                 return self._confluence(lambda c: c.whoami())
             if p == "/api/confluence/spaces":
@@ -496,6 +558,38 @@ def make_handler(app: App):
                 except OutlineError as e:
                     return self._json(422, {"error": str(e)})
                 return self._json(200, app.drafts.create_tree(str(body.get("title") or f"주간 보고 {week}"), week, tree))
+            if p == "/api/llm/test":
+                prov = app.llm_provider()
+                if prov is None:
+                    return self._json(200, {"ok": False, "error": NO_PROVIDER})
+                primary = prov.primary                                   # no fallback here: the test says whether the chosen tool works
+                if hasattr(primary, "timeout"):
+                    primary.timeout = 60
+                t0 = time.monotonic()
+                try:
+                    answer = primary.complete("OK라고만 답하라")
+                except LlmError as e:
+                    return self._json(200, {"ok": False, "error": str(e)})
+                except Exception as e:  # noqa: BLE001
+                    return self._json(200, {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"})
+                return self._json(200, {"ok": True, "answer": answer[:80], "ms": int((time.monotonic() - t0) * 1000)})
+            if p == "/api/llm/jobs":
+                kind, did, node_id, style = body.get("kind"), body.get("draft_id"), body.get("node_id"), body.get("style") or "brief"
+                if (not isinstance(kind, str) or not isinstance(did, str) or not re.fullmatch(r"d-[0-9a-f]+", did)
+                        or not (node_id is None or isinstance(node_id, str)) or not isinstance(style, str)):
+                    return self._json(400, {"error": "kind, draft_id(d-…), node_id, style이 필요합니다."})
+                if not app.llm_jobs.ready():
+                    return self._json(409, {"error": NO_PROVIDER})
+                d = app.drafts.get(did)
+                if not d:
+                    return self._json(404, {"error": "no such draft"})
+                try:
+                    return self._json(202, {"job": app.llm_jobs.submit(kind, d, node_id, style)})
+                except ValueError as e:
+                    return self._json(400, {"error": str(e)})
+            m = re.fullmatch(r"/api/llm/jobs/([\w-]+)/cancel", p)
+            if m:
+                return self._json(200, {"cancelled": app.llm_jobs.cancel(m.group(1))})
             if p == "/api/open":
                 target = Path(str(body.get("path") or "")).resolve()
                 try:
@@ -514,6 +608,25 @@ def make_handler(app: App):
         def do_PUT(self):
             if not self._guard(urllib.parse.urlsplit(self.path).path):
                 return
+            if urllib.parse.urlsplit(self.path).path == "/api/llm/config":
+                body = self._body()
+                if body is None:
+                    return
+                if not isinstance(body, dict):
+                    return self._json(400, {"error": "객체가 필요합니다."})
+                try:
+                    llm = llm_from_body(body)
+                except ValueError as e:
+                    return self._json(400, {"error": str(e)})
+                if app.cfg.path is None:
+                    return self._json(409, {"error": "설정 파일 경로가 없어 저장할 수 없습니다"})
+                try:
+                    with app.lock:
+                        save_llm(app.cfg.path, llm)
+                except (OSError, ValueError) as e:
+                    return self._json(500, {"error": f"설정 파일을 쓰지 못했습니다: {type(e).__name__}"})
+                app.cfg.llm = llm
+                return self._json(200, {"llm": asdict(llm), "ready": app.llm_jobs.ready()})
             if urllib.parse.urlsplit(self.path).path == "/api/memory/caption":
                 body = self._body()
                 if body is None:

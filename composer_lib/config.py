@@ -97,6 +97,7 @@ def _llm_from_raw(d: dict) -> LlmConfig:
 def save_llm(path: Path, llm: LlmConfig) -> None:
     """Rewrite only the `llm` key of the config file (every other key, the Confluence token included, stays as it is)."""
     path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     raw = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     raw["llm"] = asdict(llm)
     tmp = path.with_name(path.name + ".tmp")
