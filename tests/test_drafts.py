@@ -69,5 +69,32 @@ class DraftTests(unittest.TestCase):
         self.assertEqual({"tree", "blocks"}, {x["kind"] for x in self.drafts.list()})
 
 
+    def _tree(self):
+        node = {"id": "n-a", "kind": "summary", "title": "요약", "text": "x", "on": True, "folded": False, "page": False, "stale": False,
+                "src": {"week": "2026-W43", "project": None, "chapter": None, "record": None}, "marks": [], "tier": "main", "children": []}
+        return {"nodes": {"n-a": node}, "root": ["n-a"], "round": 1}
+
+    def test_duplicating_a_tree_draft_drops_the_confluence_bindings(self):
+        d = self.drafts.create_tree("트리", "2026-W43", self._tree())
+        d["pages"] = {"n-a": {"page_id": "1", "version": 1, "url": "https://wiki/x"}}
+        d["confluence"] = {"page_id": "9"}
+        self.drafts.save(d)
+        copy_ = self.drafts.duplicate(d["id"])
+        self.assertNotEqual(copy_["id"], d["id"])
+        self.assertEqual((copy_["pages"], copy_["confluence"]), ({}, None))
+        self.assertEqual((copy_["kind"], copy_["week"], copy_["root"], copy_["nodes"]), ("tree", "2026-W43", ["n-a"], d["nodes"]))
+        self.assertEqual(self.drafts.get(d["id"])["pages"], d["pages"])    # the original keeps its own
+
+    def test_saving_without_kind_still_validates_a_stored_tree_draft(self):
+        d = self.drafts.create_tree("트리", "2026-W43", self._tree())
+        bad = self._tree()
+        bad["nodes"]["n-a"]["children"] = ["n-missing"]
+        with self.assertRaises(ValueError):
+            self.drafts.save({"id": d["id"], "nodes": bad["nodes"], "root": bad["root"]})
+        self.assertEqual(self.drafts.get(d["id"])["nodes"]["n-a"]["children"], [])
+        self.drafts.save({"id": d["id"], "title": "새 제목"})              # a partial save of a valid tree is fine
+        self.assertEqual(self.drafts.get(d["id"])["kind"], "tree")
+
+
 if __name__ == "__main__":
     unittest.main()

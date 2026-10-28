@@ -81,13 +81,13 @@ class Drafts:
         return json.loads(p.read_text(encoding="utf-8"))
 
     def save(self, draft: dict) -> dict:
-        if draft.get("kind") == "tree":
-            self._validate_tree(draft)
+        existing = self.get(draft["id"]) or {}
+        if (draft.get("kind") or existing.get("kind")) == "tree":
+            self._validate_tree({**existing, **draft})
         else:
             for b in draft.get("blocks") or []:
                 if not isinstance(b, dict) or b.get("type") not in BLOCK_TYPES:
                     raise ValueError(f"unknown block type: {b.get('type') if isinstance(b, dict) else b!r}")
-        existing = self.get(draft["id"]) or {}
         merged = {**existing, **draft, "updated": _now()}
         merged.setdefault("created", merged["updated"])
         merged.setdefault("confluence", None)
@@ -100,6 +100,8 @@ class Drafts:
         now = _now()
         copy_ = copy.deepcopy(src)
         copy_.update({"id": f"d-{secrets.token_hex(6)}", "title": f"{src.get('title', '')} (복사본)", "created": now, "updated": now, "confluence": None})
+        if copy_.get("kind") == "tree":
+            copy_["pages"] = {}          # the copy must not point at the original's Confluence child pages
         return self._write(copy_)
 
     def delete(self, draft_id: str) -> None:
