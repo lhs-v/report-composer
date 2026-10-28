@@ -23,6 +23,7 @@
     $("#treeTitle").textContent = draft.title || "초안 트리";
     $("#treeWeek").textContent = draft.week || "";
     $("#treeWeek").hidden = !draft.week;
+    window.Aids?.open?.(draft);                      // before the tree: another draft's jobs go, then the provider state is re-read
     window.Tree?.open?.(draft);
   }
 

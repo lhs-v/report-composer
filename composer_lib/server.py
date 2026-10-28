@@ -32,7 +32,7 @@ from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import __version__
+from . import __version__, aids, polish
 from .config import Config, LlmConfig, save_llm
 from .confluence import ConfluenceClient, ConfluenceError
 from .drafts import Drafts
@@ -63,10 +63,11 @@ class App:
         self.last_inbox: dict = {"checked": None, "extracted": [], "error": None}
         self.llm_jobs = JobQueue(self.llm_provider)
 
-    def llm_provider(self) -> FallbackProvider | None:
-        """The writing-aid provider from the current `llm` settings (built per call, so a settings change reaches the next job).
-        None when no provider is chosen or the chosen name is not in the vocabulary."""
-        llm = self.cfg.llm
+    def llm_provider(self, llm: LlmConfig | None = None) -> FallbackProvider | None:
+        """The writing-aid provider from the current `llm` settings (built per call, so a settings change reaches the next job);
+        `llm` tries settings that are not saved yet (the dialog's test call). None when no provider is chosen or the chosen name
+        is not in the vocabulary."""
+        llm = llm or self.cfg.llm
         if not llm.provider:
             return None
         try:
@@ -559,7 +560,13 @@ def make_handler(app: App):
                     return self._json(422, {"error": str(e)})
                 return self._json(200, app.drafts.create_tree(str(body.get("title") or f"주간 보고 {week}"), week, tree))
             if p == "/api/llm/test":
-                prov = app.llm_provider()
+                trial = None
+                if isinstance(body, dict) and "provider" in body:       # the dialog tests what is in its fields, saved or not
+                    try:
+                        trial = llm_from_body(body)
+                    except ValueError as e:
+                        return self._json(200, {"ok": False, "error": str(e)})
+                prov = app.llm_provider(trial) if trial else app.llm_provider()
                 if prov is None:
                     return self._json(200, {"ok": False, "error": NO_PROVIDER})
                 primary = prov.primary                                   # no fallback here: the test says whether the chosen tool works
@@ -574,12 +581,18 @@ def make_handler(app: App):
                     return self._json(200, {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"})
                 return self._json(200, {"ok": True, "answer": answer[:80], "ms": int((time.monotonic() - t0) * 1000)})
             if p == "/api/llm/jobs":
-                kind, did, node_id, style = body.get("kind"), body.get("draft_id"), body.get("node_id"), body.get("style") or "brief"
+                if not isinstance(body, dict):
+                    return self._json(400, {"error": "객체가 필요합니다."})
+                kind, did, node_id, style = body.get("kind"), body.get("draft_id"), body.get("node_id"), body.get("style") or polish.DEFAULT_STYLE
                 if (not isinstance(kind, str) or not isinstance(did, str) or not re.fullmatch(r"d-[0-9a-f]+", did)
                         or not (node_id is None or isinstance(node_id, str)) or not isinstance(style, str)):
                     return self._json(400, {"error": "kind, draft_id(d-…), node_id, style이 필요합니다."})
+                if kind not in aids.KINDS:
+                    return self._json(400, {"error": f"알 수 없는 보조 종류입니다: {kind} ({', '.join(aids.KINDS)} 중에서 고르세요)"})
+                if style not in polish.STYLES:
+                    return self._json(400, {"error": f"알 수 없는 문체입니다: {style} ({', '.join(polish.STYLES)} 중에서 고르세요)"})
                 if not app.llm_jobs.ready():
-                    return self._json(409, {"error": NO_PROVIDER})
+                    return self._json(409, {"error": NO_PROVIDER, "code": "NO_PROVIDER"})
                 d = app.drafts.get(did)
                 if not d:
                     return self._json(404, {"error": "no such draft"})

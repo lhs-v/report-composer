@@ -25,6 +25,14 @@ def wait_done(q, jid, t=5):
     raise AssertionError("job did not finish")
 
 
+def wait_running(q, jid, t=5):
+    end = time.time() + t
+    while time.time() < end:
+        if q.get(jid)["status"] == "running": return
+        time.sleep(0.01)
+    raise AssertionError("job never started")
+
+
 def first_claim(d):
     return next(n for n in d["nodes"].values() if n["kind"] == "claim")
 
@@ -57,7 +65,7 @@ class QueueTests(unittest.TestCase):
         d = tree_draft(); claims = [n for n in d["nodes"].values() if n["kind"] == "claim"]
         first = q.submit("node", d, claims[0]["id"], "brief")
         second = q.submit("node", d, claims[1]["id"], "brief")
-        time.sleep(0.05)
+        wait_running(q, first["id"])
         self.assertTrue(q.cancel(second["id"]))                     # still queued
         self.assertTrue(q.cancel(first["id"]))                      # running: flagged
         gate.set()
@@ -73,7 +81,7 @@ class QueueTests(unittest.TestCase):
         slow = SlowFake(["늦은 답", "새 답"], gate)
         q = JobQueue(lambda: FallbackProvider(slow, None))
         d = tree_draft(); claim = first_claim(d)
-        j = q.submit("node", d, claim["id"], "brief"); time.sleep(0.05)
+        j = q.submit("node", d, claim["id"], "brief"); wait_running(q, j["id"])
         q.cancel(j["id"]); gate.set()
         j2 = wait_done(q, q.submit("node", d, claim["id"], "brief")["id"])
         self.assertEqual((j2["status"], j2["cached"], j2["result"]["value"]), ("done", False, "새 답"))

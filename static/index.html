@@ -26,6 +26,7 @@
   <span id="saveState" class="muted small">저장됨</span>
   <span class="sep"></span>
   <button id="polishBtn" class="accent" title="대충 쓴 초안을 Gemini로 다듬어 새 초안으로 만듭니다">✨ 다듬기</button>
+  <button id="llmBtn" title="글쓰기 보조(트리 초안의 다시 쓰기)에 쓸 LLM 공급자를 고릅니다">⚙ LLM</button>
   <span class="sep"></span>
   <div class="exportbar">
     <input id="draftTitle" class="title" placeholder="페이지 제목" aria-label="초안 제목" autocomplete="off">
@@ -57,6 +58,25 @@
       <span class="sp"></span>
       <button type="button" id="polishCancel">취소</button>
       <button type="button" id="polishRun" class="accent">다듬기</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="llmDlg" aria-labelledby="llmTitle">
+  <form method="dialog" class="dlg">
+    <h3 id="llmTitle">LLM 글쓰기 보조</h3>
+    <p class="muted small">트리 초안의 <b>다시 쓰기</b>가 부르는 명령줄 도구를 고릅니다. 글만 보내고 그림·파일은 보내지 않습니다. 결과는 <b>제안</b>으로 먼저 보이고, 적용해야 글이 바뀝니다.</p>
+    <label>주 공급자 <select id="llmProvider"></select></label>
+    <label>명령 <input id="llmCommand" autocomplete="off" spellcheck="false"></label>
+    <label>모델 <input id="llmModel" list="llmModels" autocomplete="off" spellcheck="false"><datalist id="llmModels"></datalist></label>
+    <label>폴백 공급자 <select id="llmFbProvider"></select></label>
+    <label>폴백 모델 <input id="llmFbModel" list="llmFbModels" autocomplete="off" spellcheck="false"><datalist id="llmFbModels"></datalist></label>
+    <p id="llmResult" class="small" role="status" aria-live="polite"></p>
+    <div class="row">
+      <span class="sp"></span>
+      <button type="button" id="llmClose">닫기</button>
+      <button type="button" id="llmTest">시험 호출</button>
+      <button type="button" id="llmSave" class="accent">저장</button>
     </div>
   </form>
 </dialog>
@@ -210,6 +230,7 @@
 <script src="/static/tree/motion.js"></script>
 <script src="/static/tree/keys.js"></script>
 <script src="/static/tree/node.js"></script>
+<script src="/static/tree/aids.js"></script>
 <script src="/static/tree/drawer.js"></script>
 <script src="/static/tree/tree.js"></script>
 <script src="/static/tree/boot.js"></script>

@@ -10,6 +10,8 @@ window.NodePane = (() => {
   const IMG = /\.(png|jpe?g|gif|webp|svg|avif)$/i, VID = /\.(mp4|webm)$/i;
   const BODIED = ["claim", "text", "summary", "project"];      // kinds that show a body
   const SPLITTABLE = ["claim", "text"];
+  // which writing aid a kind has (aids.js asks the server for it): the body kinds rewrite their text, the summary its lines, a record its captions
+  const AID = { claim: ["node", "다시 쓰기"], project: ["node", "다시 쓰기"], text: ["node", "다시 쓰기"], summary: ["summary", "요약 다시 쓰기"], record: ["caption", "설명 다시 쓰기"] };
   const KIND_LABEL = { summary: "요약", project: "프로젝트", claim: "주장", record: "기록", flow: "흐름", ledger: "장부", text: "내 글" };
   const LEDGER_LABEL = { decision: "결정", resolved: "닫힘", open: "열림", next: "다음" };
 
@@ -122,20 +124,24 @@ window.NodePane = (() => {
 
   function build(n) {
     const id = n.id, draft = Tree.state.draft;
-    const record = n.kind === "record", listed = n.kind === "flow" || n.kind === "ledger";
-    main.innerHTML = `<div class="n-stale" role="status" hidden><span>구조가 바뀌었습니다. 본문을 다시 읽어 보세요</span><button type="button" class="n-ack">확인했어요</button></div>`
+    const record = n.kind === "record", listed = n.kind === "flow" || n.kind === "ledger", aid = AID[n.kind];
+    // the aid button and the place its progress / proposal appears
+    const aidHTML = aid ? `<div class="n-aidrow"><button type="button" class="n-aid">${aid[1]}</button></div><div class="n-aidbox" data-for="${esc(id)}" aria-live="polite"></div>` : "";
+    main.innerHTML = `<div class="n-stale" role="status" hidden><span>구조가 바뀌었습니다. 본문을 다시 읽어 보세요</span>`
+      + `<span class="n-stalebtns"><button type="button" class="n-polish" hidden>✨ 다시 다듬기</button><button type="button" class="n-ack">확인했어요</button></span></div>`
       + `<button type="button" class="n-src" title="이 줄의 근거를 서랍에서 봅니다"></button>`
       + `<input class="n-title" aria-label="제목" placeholder="제목" autocomplete="off">`
       + `<div class="n-states"><span class="n-flags"></span>`
       + `<button type="button" class="n-on"></button><button type="button" class="n-fold"></button><button type="button" class="n-page"></button></div>`
       + (record ? `<div class="n-media" hidden></div>`
         + `<div class="n-caps"><input class="n-cap" aria-label="설명 첫 줄: 무엇이 보이는가" placeholder="무엇이 보이는가" autocomplete="off">`
-        + `<input class="n-cap" aria-label="설명 둘째 줄: 왜 중요한가" placeholder="왜 중요한가" autocomplete="off"></div>`
+        + `<input class="n-cap" aria-label="설명 둘째 줄: 왜 중요한가" placeholder="왜 중요한가" autocomplete="off"></div>` + aidHTML
         + `<fieldset class="n-show"><legend>보여 줄 것</legend><div class="n-opts"></div></fieldset>` : "")
       + (listed ? `<ul class="n-items"></ul><button type="button" class="n-totext">글로 바꾸기</button>` : "")
-      + (BODIED.includes(n.kind) ? `<div class="n-body" role="textbox" aria-multiline="true" aria-label="본문" data-placeholder="본문을 쓰세요"></div>` : "");
+      + (BODIED.includes(n.kind) ? aidHTML + `<div class="n-body" role="textbox" aria-multiline="true" aria-label="본문" data-placeholder="본문을 쓰세요"></div>` : "");
     const q = s => main.querySelector(s);
     els = { stale: q(".n-stale"), src: q(".n-src"), title: q(".n-title"), flags: q(".n-flags"), on: q(".n-on"), fold: q(".n-fold"), page: q(".n-page"),
+            ack: q(".n-ack"), polish: q(".n-polish"), aid: q(".n-aid"), box: q(".n-aidbox"),
             media: q(".n-media"), caps: [...main.querySelectorAll(".n-cap")], opts: q(".n-opts"), items: q(".n-items"), body: q(".n-body") };
     curKind = n.kind;
 
@@ -144,6 +150,8 @@ window.NodePane = (() => {
       if (els.body) Motion.sweep(els.body);                          // 착지: the one motion here
       Keys.op({ type: "stale", id, from: true, to: false });
     });
+    els.polish.addEventListener("click", () => { if (AID[n.kind]) window.Aids?.request(AID[n.kind][0], id); });
+    els.aid?.addEventListener("click", () => window.Aids?.request(AID[n.kind][0], id));
     els.src.addEventListener("click", () => {
       window.Drawer?.show?.(id, "evidence");
       if (matchMedia("(max-width: 1007px)").matches) document.getElementById("tree").dataset.pane = "drawer";
@@ -253,6 +261,11 @@ window.NodePane = (() => {
     e.src.textContent = sourceLine(n);
     if (!focused(e.title) && e.title.value !== (n.title || "")) e.title.value = n.title || "";
     e.stale.hidden = !n.stale;
+    // writing aids: usable when a provider is set (aids.js knows), otherwise the old "확인했어요" stays and the button says why it is off
+    const aids = window.Aids, ready = !!aids?.state.ready, busy = !!aids?.busy(n.id);
+    e.polish.hidden = !ready || !AID[n.kind]; e.polish.disabled = busy; e.ack.hidden = !e.polish.hidden;
+    if (e.aid) { e.aid.disabled = !ready || busy; e.aid.title = !ready ? aids?.TIP || "" : busy ? "다시 쓰는 중입니다" : ""; }
+    if (e.box) aids?.render(n.id, e.box);
     e.flags.textContent = flags(n);
     e.on.textContent = n.on ? "끄기" : "켜기"; e.on.setAttribute("aria-pressed", String(!!n.on));
     e.fold.hidden = !n.children?.length; e.fold.textContent = n.folded ? "펴기" : "접기"; e.fold.setAttribute("aria-pressed", String(!!n.folded));

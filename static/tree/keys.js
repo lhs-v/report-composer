@@ -81,17 +81,23 @@ window.Keys = (() => {
     const pre = [], seen = new Set();
     const stale = id => { const p = id && N()[id]; if (p && p.kind === "claim" && !p.stale && !seen.has("s" + id)) { seen.add("s" + id); pre.push({ type: "stale", id, from: false, to: true }); } };
     const reveal = id => { const h = id && N()[id]; if (h && h.folded && !seen.has("f" + id)) { seen.add("f" + id); pre.push({ type: "fold", id, from: true, to: false }); } };
+    // the week summary was written from the nodes that are on: when they change, it is out of date (undone in the same step)
+    const summary = skip => {
+      const id = T().draft.root.find(r => N()[r]?.kind === "summary");
+      if (id && id !== skip && !N()[id].stale && !seen.has("s" + id)) { seen.add("s" + id); pre.push({ type: "stale", id, from: false, to: true }); }
+    };
     switch (o.type) {
-      case "toggle": stale(parentOf(o.id)); break;
-      case "split": { const n = N()[o.id]; o.parent = parentOf(o.id); o.snapshot = { text: n.text, children: [...n.children], stale: n.stale }; stale(o.parent); break; }
+      case "toggle": stale(parentOf(o.id)); summary(o.id); break;
+      case "split": { const n = N()[o.id]; o.parent = parentOf(o.id); o.snapshot = { text: n.text, children: [...n.children], stale: n.stale }; stale(o.parent); summary(); break; }
       case "merge": {
         const gone = N()[o.goneId], keep = N()[o.keepId], p = parentOf(o.goneId);
         o.snapshot = { node: clone(gone), parent: p, index: siblings(p).indexOf(o.goneId), keepText: keep.text, keepChildren: [...keep.children], keepStale: keep.stale };
-        stale(p); break;
+        stale(p); summary(); break;
       }
+      case "removeNode": summary(); break;
       case "move": if (o.from.parent !== o.to.parent) { stale(o.from.parent); stale(o.to.parent); } reveal(o.to.parent); break;
       case "newText": reveal(o.parent); break;
-      case "insertNode": if (!o.quiet) { stale(o.parent); reveal(o.parent); } break; // quiet: a late record joins without touching its claim
+      case "insertNode": if (!o.quiet) { stale(o.parent); reveal(o.parent); } summary(); break; // quiet: a late record joins without touching its claim (the summary still hears of it)
     }
     const fwd = [...pre, o];
     return { fwd, inv: fwd.slice().reverse().flatMap(invert), sel: o.keepId || o.id };
@@ -126,6 +132,16 @@ window.Keys = (() => {
     (back ? redo : undo).push(e);
     // a caption the memory was already told about (typing sends it): tell it again what the text is now
     for (const o of ops) if (o.type === "text" && o.field === "caption") window.NodePane?.remember?.(o.id);
+  }
+
+  // a writing aid's proposal lands as ONE history entry: the new text (or caption lines) and, when the node was stale, stale -> false.
+  // One Ctrl+Z gives back both. Returns false when the node is gone.
+  function applyProposal(id, field, to) {
+    const n = N()[id]; if (!n) return false;
+    const fwd = [{ type: "text", id, field, from: clone(n[field] ?? (field === "caption" ? [] : "")), to: clone(to) }];
+    if (n.stale) fwd.push({ type: "stale", id, from: true, to: false });
+    commit({ fwd, inv: fwd.slice().reverse().flatMap(invert), sel: id });
+    return true;
   }
 
   // typing: edits within one second of each other are a single undo step
@@ -384,6 +400,6 @@ window.Keys = (() => {
   }
   function reset() { undo = []; redo = []; tp = null; busy = false; } // a different draft: its history starts empty
 
-  return { op, type: typing, typing, move, indent, merge, split, newText, togglePage, hint, bind, reset, insert, insertMany, childKinds: CHILD_KINDS, landing, moveTo, parentOf,
+  return { op, applyProposal, type: typing, typing, move, indent, merge, split, newText, togglePage, hint, bind, reset, insert, insertMany, childKinds: CHILD_KINDS, landing, moveTo, parentOf,
            undo: () => step(true), redo: () => step(false) };
 })();

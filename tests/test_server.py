@@ -615,10 +615,29 @@ class ServerV3Tests(unittest.TestCase):
         app.llm_provider = lambda: FallbackProvider(FakeProvider([]), None)
         self.assertFalse(self.req("/api/llm/test", "POST", {})[1]["ok"])
 
+    def test_llm_test_call_can_try_settings_that_are_not_saved(self):
+        app = self.httpd.app
+        seen, before = [], app.cfg.llm
+        app.llm_provider = lambda llm=None: seen.append(llm) or FallbackProvider(FakeProvider(["OK"]), None)
+        self.addCleanup(delattr, app, "llm_provider")
+        self.assertTrue(self.req("/api/llm/test", "POST", {"provider": "gemini", "model": "m1"})[1]["ok"])
+        self.assertEqual((seen[0].provider, seen[0].model), ("gemini", "m1"))     # the form's values, not the saved config
+        self.assertIs(app.cfg.llm, before)                                        # and nothing was saved
+        code, r = self.req("/api/llm/test", "POST", {"provider": "nope"})
+        self.assertEqual((code, r["ok"]), (200, False)); self.assertEqual(len(seen), 1)
+
     def test_jobs_are_refused_without_a_provider(self):
         self.httpd.app.llm_jobs = JobQueue(lambda: None)
         d = self.req("/api/drafts/tree", "POST", {"title": "t", "week": self.week})[1]
-        self.assertEqual(self.req("/api/llm/jobs", "POST", {"kind": "summary", "draft_id": d["id"]})[0], 409)
+        code, r = self.req("/api/llm/jobs", "POST", {"kind": "summary", "draft_id": d["id"]})
+        self.assertEqual((code, json.loads(r).get("code")), (409, "NO_PROVIDER"))
+
+    def test_a_bad_job_request_is_a_400_before_anything_else(self):
+        self.httpd.app.llm_jobs = JobQueue(lambda: None)                        # not ready, yet bad input still answers 400 first
+        d = self.req("/api/drafts/tree", "POST", {"title": "t", "week": self.week})[1]
+        self.assertEqual(self.req("/api/llm/jobs", "POST", {"kind": "poem", "draft_id": d["id"]})[0], 400)
+        self.assertEqual(self.req("/api/llm/jobs", "POST", {"kind": "summary", "draft_id": d["id"], "style": "slang"})[0], 400)
+        self.assertEqual(self.req("/api/llm/jobs", "POST", ["summary"])[0], 400)
 
     def test_llm_routes_answer_the_composer_window_only(self):
         code, _ = self.req("/api/llm/providers", headers={"Host": "localhost:%d" % self.port})
