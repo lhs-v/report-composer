@@ -237,3 +237,44 @@ class ToBlocksTests(unittest.TestCase):
         self.assertEqual(main[3], {"id": "b-text1-0", "type": "bullets", "items": ["하나", "둘"], "source_ref": None})
         ledger = next(b for b in main if b["type"] == "bullets" and b["items"][0].startswith("결정:"))
         self.assertEqual(ledger["items"], ["결정: 결정 하나", "열림: 열린 것"])
+
+    def test_a_folded_descendant_of_a_page_stays_on_that_page_under_its_own_reference_heading(self):
+        d = tree_draft()
+        claim = next(n for n in d["nodes"].values() if n["kind"] == "claim" and n["src"]["chapter"] == "C-U-1")
+        claim["page"] = True
+        rec = next(n for n in d["nodes"].values() if n["src"].get("record") == "R-new")
+        rec["folded"] = True
+        main, pages = to_blocks(d)
+        blocks = pages[0]["blocks"]
+        heads = [b["text"] for b in blocks if b["type"] == "heading"]
+        self.assertEqual(heads, ["비교 결론", "참고"])
+        image_at = next(i for i, b in enumerate(blocks) if b["type"] == "image")
+        self.assertGreater(image_at, next(i for i, b in enumerate(blocks) if b.get("text") == "참고"))
+        self.assertFalse(any(b["type"] in ("image", "file") for b in main))                # not in the parent document
+        self.assertFalse(any(b["type"] == "bullets" and b["items"][0].startswith("10월 21일") for b in main))   # the page's folded flow neither
+        self.assertEqual([b["text"] for b in main if b["type"] == "heading"].count("참고"), 1)   # only the appendix claim's
+
+    def test_empty_flow_and_summary_emit_nothing_and_no_reference_heading_without_folded_nodes(self):
+        d = tree_draft()
+        for n in d["nodes"].values():
+            n["folded"] = False
+        flow = next(n for n in d["nodes"].values() if n["kind"] == "flow" and n["src"]["chapter"] == "C-U-1")
+        flow["items"] = []
+        d["nodes"][d["root"][0]]["text"] = ""
+        main, _ = to_blocks(d)
+        self.assertFalse(any(b["type"] == "bullets" and not b["items"] for b in main))
+        self.assertFalse(any(b["type"] == "callout" for b in main))
+        self.assertNotIn("참고", [b["text"] for b in main if b["type"] == "heading"])
+
+    def test_a_chosen_support_file_is_an_image_or_a_file_by_its_suffix(self):
+        d = tree_draft()
+        rec = next(n for n in d["nodes"].values() if n["src"].get("record") == "R-new")
+        rec["files"].append({"rel": "notes.pdf", "role": "support", "href": "records/sp-mobile/R-new/notes.pdf", "home": False})
+        rec["show"] = "preview-top.png"
+        main, _ = to_blocks(d)
+        mine = [b for b in main if (b.get("source_ref") or "").endswith(":R-new")]
+        self.assertEqual([(b["type"], b["src"]) for b in mine], [("image", "2026-W43/records/sp-mobile/R-new/preview-top.png")])
+        rec["show"] = "notes.pdf"
+        main, _ = to_blocks(d)
+        mine = [b for b in main if (b.get("source_ref") or "").endswith(":R-new")]
+        self.assertEqual([(b["type"], b["src"], b["caption"]) for b in mine], [("file", "2026-W43/records/sp-mobile/R-new/notes.pdf", "무엇 — 왜")])

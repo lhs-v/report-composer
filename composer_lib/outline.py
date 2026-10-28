@@ -194,7 +194,8 @@ def _own_blocks(n: dict, week: str) -> list[dict]:
         return {"id": f"b-{n['id'][2:]}-{k}", "source_ref": ref, **kw}
     kind = n["kind"]
     if kind == "summary":
-        out.append(b(0, type="callout", text=n["text"]))
+        if (n.get("text") or "").strip():
+            out.append(b(0, type="callout", text=n["text"]))
     elif kind == "project":
         out.append(b(0, type="heading", level=2, text=n["title"]))
         if n.get("text"):
@@ -219,9 +220,11 @@ def _own_blocks(n: dict, week: str) -> list[dict]:
         if not img and not href:
             out.append(b(k, type="paragraph", text=f"{n['title']} (파일은 집에 있음) — {caption}"))
     elif kind == "flow":
-        out.append(b(0, type="bullets", items=[f"{_kdate(i.get('when', ''))} · {i.get('text', '')}" for i in n.get("items") or []]))
+        if n.get("items"):
+            out.append(b(0, type="bullets", items=[f"{_kdate(i.get('when', ''))} · {i.get('text', '')}" for i in n["items"]]))
     elif kind == "ledger":
-        out.append(b(0, type="bullets", items=[f"{LEDGER_LABEL.get(i['kind'], i['kind'])}: {i['text']}" for i in n.get("items") or []]))
+        if n.get("items"):
+            out.append(b(0, type="bullets", items=[f"{LEDGER_LABEL.get(i['kind'], i['kind'])}: {i['text']}" for i in n["items"]]))
     elif kind == "text":
         lines = [l for l in (n.get("text") or "").split("\n") if l.strip()]
         if lines and all(l.lstrip().startswith("- ") for l in lines):
@@ -240,37 +243,42 @@ def to_blocks(draft: dict) -> tuple[list[dict], list[dict]]:
     def first_sentence(text: str) -> str:
         return re.split(r"(?<=[.!?。])\s", (text or "").strip(), maxsplit=1)[0]
 
-    def walk(nid: str, out: list[dict], in_reference: bool) -> None:
+    def walk(nid: str, out: list[dict], ref: list[dict], in_reference: bool) -> None:
+        """`out` takes the node's blocks; `ref` is the reference list of the document (main or one page) this node belongs to."""
         n = nodes.get(nid)
         if not n or not n.get("on"):
             return
         if n.get("page") and not in_reference:
-            own: list[dict] = []
-            walk_page(n, own)
-            pages.append({"node": n["id"], "title": n["title"], "blocks": own})
+            pages.append({"node": n["id"], "title": n["title"], "blocks": page_blocks(n)})
             out.append({"id": f"b-{n['id'][2:]}-stub", "type": "paragraph", "source_ref": _ref(n),
                         "text": f"{n['title']} — {first_sentence(n.get('text'))} [[page:{n['id']}]]".replace(" —  [[", " [[")})
             return
         if n.get("folded") and not in_reference:
-            walk_into(n, reference, True)
+            walk_into(n, ref, ref, True)
             return
-        walk_into(n, out, in_reference)
+        walk_into(n, out, ref, in_reference)
 
-    def walk_into(n: dict, out: list[dict], in_reference: bool) -> None:
+    def walk_into(n: dict, out: list[dict], ref: list[dict], in_reference: bool) -> None:
         out.extend(_own_blocks(n, week))
         for c in n.get("children") or []:
-            walk(c, out, in_reference)
+            walk(c, out, ref, in_reference)
 
-    def walk_page(n: dict, out: list[dict]) -> None:
+    def page_blocks(n: dict) -> list[dict]:
+        own: list[dict] = []
+        page_ref: list[dict] = []                                           # a folded descendant stays on its own page
         head = _own_blocks(n, week)
         if head and head[0]["type"] == "heading":
             head[0]["level"] = 2
-        out.extend(head)
+        own.extend(head)
         for c in n.get("children") or []:
-            walk(c, out, False)
+            walk(c, own, page_ref, False)
+        if page_ref:
+            own.append({"id": f"b-{n['id'][2:]}-reference", "type": "heading", "level": 2, "text": "참고", "source_ref": None})
+            own.extend(page_ref)
+        return own
 
     for rid in draft.get("root") or []:
-        walk(rid, main, False)
+        walk(rid, main, reference, False)
     if reference:
         main.append({"id": "b-reference-0", "type": "heading", "level": 2, "text": "참고", "source_ref": None})
         main.extend(reference)
