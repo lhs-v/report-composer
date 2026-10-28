@@ -354,10 +354,17 @@ class ServerV3Tests(unittest.TestCase):
         tree = self.req(f"/api/outline/{self.week}")[1]
         rec = next(n for n in tree["nodes"].values() if n["kind"] == "record" and n["src"]["record"] == R_PAGE)
         self.assertEqual(rec["caption"], ["고친 설명"])
-        for bad in ({"record": 5, "text": ["a"], "week": self.week}, {"record": R_PAGE, "text": [], "week": self.week},
+        for bad in ({"record": 5, "text": ["a"], "week": self.week}, {"record": R_PAGE, "text": "a", "week": self.week},
                     {"record": R_PAGE, "text": ["a", "b", "c"], "week": self.week}, {"record": R_PAGE, "text": [1], "week": self.week},
-                    {"record": R_PAGE, "text": ["a"], "week": "W43"}):
+                    {"record": R_PAGE, "text": ["a"], "week": "W43"}, {"record": R_PAGE, "text": [], "week": "W43"}):
             self.assertEqual(self.req("/api/memory/caption", "PUT", bad)[0], 400, bad)
+        # an empty list is "the writer cleared both lines": the memory entry goes, and the seed caption applies again
+        self.assertEqual(self.req("/api/memory/caption", "PUT", {"record": R_PAGE, "text": [], "week": self.week})[0], 200)
+        self.assertNotIn(R_PAGE, self.req("/api/memory")[1]["captions"])
+        self.assertEqual(self.req("/api/memory/caption", "PUT", {"record": R_PAGE, "text": [], "week": self.week})[0], 200)  # again: harmless
+        tree = self.req(f"/api/outline/{self.week}")[1]
+        rec = next(n for n in tree["nodes"].values() if n["kind"] == "record" and n["src"]["record"] == R_PAGE)
+        self.assertNotEqual(rec["caption"], ["고친 설명"])
 
     def test_an_unreadable_outcomes_file_answers_422_not_a_dropped_connection(self):
         import shutil

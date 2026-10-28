@@ -144,7 +144,7 @@ window.NodePane = (() => {
         Keys.typing(id, "caption", text);
         clearTimeout(timer);
         const m = node(id), rec = m?.src?.record, week = draft.week;
-        if (!rec || !text.length) return;
+        if (!rec) return;                                              // both lines empty: text is [], which tells the server to forget the fix
         timer = setTimeout(() => api("/api/memory/caption", { method: "PUT", body: { record: rec, text, week } })
           .catch(e => window.Composer.toast("설명을 기억하지 못했습니다: " + esc(e.message), 6000)), 800);
       };
@@ -180,10 +180,10 @@ window.NodePane = (() => {
       if (e.key !== "Enter" || e.isComposing || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
       const m = node(id); if (!m || !SPLITTABLE.includes(m.kind)) return;
       const at = caretOffset(body), raw = rawOf(body);
-      if (at === null || at < 2 || raw.slice(at - 2, at) !== "\n\n") return;   // only an Enter on an empty line splits
+      if (at === null || at < 1 || raw[at - 1] !== "\n") return;       // an Enter at the start of a line splits (the second Enter in a row); inside a line it breaks the line
       e.preventDefault();
       Keys.typing(id, "text", raw);                                    // the model must hold exactly what is on screen
-      Keys.split(id, at - 1);
+      if (Keys.split(id, at)) els.body?.focus();                       // the new node is shown now: keep writing in it
     });
   }
 
@@ -202,6 +202,8 @@ window.NodePane = (() => {
     const btn = main.querySelector(".n-totext"); if (btn) btn.disabled = !(n.items || []).length;
   }
 
+  const failed = (what, href) => Object.assign(document.createElement("p"), { className: "n-none", textContent: `${what}을 불러오지 못했습니다 (${href.split("/").pop()})` });
+
   function renderMedia(n) {
     const host = els.media; if (!host) return;
     const m = mediaFor(n), week = n.src?.week || Tree.state.draft.week;
@@ -217,12 +219,15 @@ window.NodePane = (() => {
       if (!v) {
         v = document.createElement("video"); v.controls = true; v.preload = "metadata"; v.playsInline = true; v.dataset.url = url; v.src = url;
         v.setAttribute("aria-label", n.title || "영상"); videos.set(n.id, v);
+        v.addEventListener("error", () => {  // a failed source: say so instead of a dead player, and let the next visit try again
+          videos.delete(n.id); v.parentNode?.replaceChildren(failed("영상", m.href));
+        });
       }
       if (host.firstChild !== v) host.replaceChildren(v);
     } else if (m.kind === "image") {
       const img = new Image(); img.alt = n.title || ""; img.className = "n-img"; host.classList.add("loading");
       img.onload = () => host.classList.remove("loading");
-      img.onerror = () => { host.classList.remove("loading"); host.replaceChildren(Object.assign(document.createElement("p"), { className: "n-none", textContent: "그림을 불러오지 못했어요." })); };
+      img.onerror = () => { host.classList.remove("loading"); host.replaceChildren(failed("그림", m.href)); };
       img.src = url; host.replaceChildren(img);
     } else {
       const a = document.createElement("a"); a.className = "n-open"; a.target = "_blank"; a.rel = "noopener"; a.textContent = "열기 · " + m.href.split("/").pop();

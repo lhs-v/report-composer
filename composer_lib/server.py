@@ -452,10 +452,13 @@ def make_handler(app: App):
                 if body is None:
                     return
                 rid, text, week = body.get("record"), body.get("text"), body.get("week")
-                if (not isinstance(rid, str) or not rid or not isinstance(text, list) or not 1 <= len(text) <= 2
+                if (not isinstance(rid, str) or not rid or not isinstance(text, list) or len(text) > 2
                         or not all(isinstance(x, str) for x in text) or not isinstance(week, str) or not re.fullmatch(r"\d{4}-W\d{2}", week)):
-                    return self._json(400, {"error": "record(문자열), text(문자열 1~2개), week(YYYY-Www)가 필요합니다."})
-                app.memory.set_caption(rid, text, week)
+                    return self._json(400, {"error": "record(문자열), text(문자열 0~2개; 빈 목록은 기억을 지움), week(YYYY-Www)가 필요합니다."})
+                if text:
+                    app.memory.set_caption(rid, text, week)
+                else:
+                    app.memory.clear_caption(rid)
                 return self._json(200, {"ok": True})
             m = re.fullmatch(r"/api/drafts/(d-[0-9a-f]+)", urllib.parse.urlsplit(self.path).path)
             if not m:

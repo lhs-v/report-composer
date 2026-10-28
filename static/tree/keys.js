@@ -201,8 +201,9 @@ window.Keys = (() => {
     const n = N()[id]; if (!n) return null;
     if (!BODIED.includes(n.kind)) { toast("글이 있는 주장이나 내 글만 나눌 수 있어요"); return null; }
     const text = n.text || "", head = text.slice(0, at).trimEnd(), tail = text.slice(at).trimStart();
-    if (!head || !tail) { toast("나눌 자리가 글의 맨 앞이나 맨 끝이에요"); return null; }
-    const title2 = tail.split(/[.!?。\n]/)[0].trim().slice(0, 40) || (n.title ? n.title + " (2)" : "");
+    if (!head) { toast("나눌 자리가 글의 맨 앞이에요"); return null; }
+    // nothing after the caret: the second Enter at the end of a body opens an empty sibling to write in
+    const title2 = tail ? (tail.split(/[.!?。\n]/)[0].trim().slice(0, 40) || (n.title ? n.title + " (2)" : "")) : (n.kind === "claim" && n.title ? n.title + " (2)" : "");
     const nid = newId();
     op({ type: "split", id, newId: nid, at, title2, text2: tail });
     const li = T().rows.get(nid); if (li) Motion.once(li, "open", 200);

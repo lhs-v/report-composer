@@ -46,6 +46,11 @@ class Memory:
                                        "updated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}
         self._write()
 
+    def clear_caption(self, rid: str) -> None:
+        """The writer emptied both caption lines: forget the fix, so the home seed's caption applies again."""
+        if self._data["captions"].pop(rid, None) is not None:
+            self._write()
+
     def mark_used(self, ids: list[str], week: str) -> None:
         for i in ids:
             weeks = self._data["used"].setdefault(i, [])
