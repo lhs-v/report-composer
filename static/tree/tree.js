@@ -7,7 +7,7 @@ window.Tree = (() => {
   const list = () => document.getElementById("treeList");
   const nodes = () => S.draft.nodes;
   const marksOf = n => n.marks || [];
-  const MARK = { new: "새", sent: "보냄", changed: "바뀜", noref: "근거 없음", home: "집", used: "지난주", "other-week": "다른 주" };
+  const MARK = { new: "새", sent: "보냄", changed: "바뀜", noref: "근거 없음", home: "집", used: "지난주", "other-week": "다른 주", picked: "집은 그림" };
 
   // depth-first, in tree order; folded nodes keep their children out of the walk unless all=true
   function* walk(ids = S.draft.root, depth = 0, parent = null, all = true) {
@@ -28,6 +28,7 @@ window.Tree = (() => {
       li = document.createElement("li"); li.className = `t-row kind-${n.kind}`; li.dataset.id = n.id; li.setAttribute("role", "treeitem"); li.tabIndex = -1;
       li.innerHTML = `<button type="button" class="t-check" aria-label="켜기/끄기" tabindex="-1"></button><span class="t-rail"></span><span class="t-title"></span><span class="t-marks"></span><span class="t-count"></span>`;
       li.querySelector(".t-check").addEventListener("click", e => { e.stopPropagation(); select(n.id); toggle(n.id); Keys.hint("toggle"); });
+      li.querySelector(".t-title").draggable = true; // the handle for moving the row; drawer.js owns the drag events
       li.addEventListener("click", () => select(n.id));
       li.addEventListener("dblclick", () => { if (n.children?.length) { fold(n.id); Keys.hint("fold"); } });
       S.rows.set(n.id, li);
@@ -144,5 +145,5 @@ window.Tree = (() => {
     render(); select(first); Keys.bind();
   }
 
-  return { open, render, change, setDraft: change, toggle, fold, select, setFilter, flush, state: S, nodes, walk };
+  return { open, render, change, setDraft: change, toggle, fold, select, setFilter, flush, state: S, nodes, walk, markLabel: m => MARK[m] || m };
 })();

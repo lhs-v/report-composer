@@ -278,3 +278,15 @@ class ToBlocksTests(unittest.TestCase):
         main, _ = to_blocks(d)
         mine = [b for b in main if (b.get("source_ref") or "").endswith(":R-new")]
         self.assertEqual([(b["type"], b["src"], b["caption"]) for b in mine], [("file", "2026-W43/records/sp-mobile/R-new/notes.pdf", "무엇 — 왜")])
+
+    def test_a_record_copied_from_another_week_keeps_its_own_week_in_the_file_paths(self):
+        d = tree_draft()
+        rec = next(n for n in d["nodes"].values() if n["src"].get("record") == "R-new")
+        rec["src"] = {**rec["src"], "week": "2026-W42"}                                  # dragged in from the drawer's "다른 주" tab
+        main, _ = to_blocks(d)
+        mine = [b for b in main if (b.get("source_ref") or "").endswith(":R-new")]
+        self.assertEqual([(b["type"], b["src"]) for b in mine],
+                         [("image", "2026-W42/records/sp-mobile/R-new/preview-top.png"), ("file", "2026-W42/records/sp-mobile/R-new/index.html")])
+        rec["src"]["week"] = None                                                         # no week of its own: the draft's week
+        main, _ = to_blocks(d)
+        self.assertEqual(next(b for b in main if b["type"] == "image")["src"], "2026-W43/records/sp-mobile/R-new/preview-top.png")

@@ -176,3 +176,57 @@ kbd { font: 500 11px/1.4 var(--font-mono); padding: 0 5px; border: 1px solid var
   .tree:not([data-pane="node"]) .t-node,
   .tree:not([data-pane="drawer"]) .t-drawer { display: none; }
 }
+
+/* drawer (d-*) */
+.d-tabs button[aria-selected="false"] { color: var(--muted); }
+.d-body { display: flex; flex-direction: column; gap: 14px; }
+.d-none { margin: 0; padding: 8px 0; font-size: 13px; color: var(--muted); }
+li.d-none { list-style: none; }
+.d-hint { margin: 0; font-size: 12px; color: var(--muted); }
+.d-rec { display: flex; flex-direction: column; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.d-rec:last-child { border-bottom: 0; }
+.d-rechead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; }
+.d-rechead h3 { flex: 1 1 100%; margin: 0; font: 600 14px/1.4 var(--font-display); letter-spacing: 0; text-transform: none; color: var(--fg); overflow-wrap: anywhere; }
+.d-rechead .chip, .d-role { font-size: 11px; padding: 0 6px; font-style: normal; }
+.d-files { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.d-file { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12px; }
+.d-file .d-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.d-thumbwrap { flex: 1 0 100%; display: block; }
+.d-thumb { display: block; max-width: 100%; max-height: 140px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+video.d-thumb { flex: 1 0 100%; width: 100%; }
+.d-open { color: var(--accent); font-size: 12px; }
+.d-file.home { color: var(--muted); opacity: .75; }
+.d-file.home .d-name { font-family: var(--font-body); font-size: 12px; }
+.d-more, .d-home { font-size: 12px; color: var(--muted); }
+.d-more summary, .d-home summary { cursor: pointer; margin-bottom: 6px; }
+.d-sec h4 { margin: 0 0 6px; font: 500 12px/1.5 var(--font-body); color: var(--muted); letter-spacing: 0; text-transform: none; }
+.d-sent { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.6; }
+.d-weekpick { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.d-weekpick select { flex: 1; min-width: 0; }
+.d-list, .d-grid { list-style: none; margin: 0; padding: 0; }
+.d-list { display: flex; flex-direction: column; gap: 4px; }
+.d-projhead { margin-top: 8px; font: 600 13px/1.4 var(--font-display); color: var(--fg); }
+.d-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px calc(8px + var(--d, 0) * 14px); border: 1px solid var(--line); border-radius: 6px; background: var(--bg); cursor: grab; }
+.d-item:hover { border-color: var(--accent); }
+.d-item.dragging, .d-pick.dragging { opacity: .5; }
+.d-itext { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.d-ititle { font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.d-isub { color: var(--muted); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.d-imarks { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; max-width: 45%; }
+.d-imarks .chip { font-size: 11px; padding: 0 6px; font-style: normal; }
+.d-imarks .m-other-week { color: var(--accent); border-color: var(--accent); }
+.d-mini { flex: none; width: 36px; height: 36px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); }
+.d-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.d-pick { display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); cursor: grab; }
+.d-pick:hover { border-color: var(--accent); }
+.d-pick .d-thumb { width: 100%; height: 90px; object-fit: contain; }
+.d-pick .d-name { font-size: 11px; max-height: 2.8em; overflow: hidden; }
+
+/* dragging in the tree: the landing band and the dotted ghost of the row being moved */
+.t-outline { position: relative; }
+.t-drop { position: absolute; z-index: 2; height: 4px; box-sizing: border-box; border: 1px solid var(--accent); border-radius: 2px; background: var(--accent-soft); pointer-events: none; }
+.t-drop[hidden] { display: none; }
+.t-row .t-title[draggable="true"] { cursor: grab; }
+.t-row.t-ghost { opacity: .5; outline: 1px dotted var(--accent); outline-offset: -1px; background: transparent; }
+.t-row .t-marks .m-other-week { color: var(--accent); border-color: var(--accent); }
+.t-row .t-marks .m-picked { color: var(--ok); border-color: var(--ok); }

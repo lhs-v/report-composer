@@ -51,6 +51,7 @@ window.Keys = (() => {
         N()[o.id] = { id: o.id, kind: "text", title: "", text: "", on: true, folded: false, page: false, stale: false,
           src: { week: T().draft.week, project: null, chapter: null, record: null }, marks: ["noref"], tier: "main", children: [] };
         siblings(o.parent).splice(o.index, 0, o.id); break;
+      case "insertNode": N()[o.id] = clone(o.node); siblings(o.parent).splice(o.index, 0, o.id); break;
       case "removeNode": { const sib = siblings(o.parent), i = sib.indexOf(o.id); if (i >= 0) sib.splice(i, 1); delete N()[o.id]; break; }
       case "restoreNode": N()[o.id] = clone(o.node); siblings(o.parent).splice(o.index, 0, o.id); break;
       case "restoreBody": if (n) { n.text = o.text; n.children = [...o.children]; n.stale = o.stale; } break;
@@ -65,7 +66,7 @@ window.Keys = (() => {
                             { type: "restoreBody", id: o.id, text: o.snapshot.text, children: o.snapshot.children, stale: o.snapshot.stale }];
       case "merge": return [{ type: "restoreNode", id: o.goneId, node: o.snapshot.node, parent: o.snapshot.parent, index: o.snapshot.index },
                             { type: "restoreBody", id: o.keepId, text: o.snapshot.keepText, children: o.snapshot.keepChildren, stale: o.snapshot.keepStale }];
-      case "newText": return [{ type: "removeNode", id: o.id, parent: o.parent }];
+      case "newText": case "insertNode": return [{ type: "removeNode", id: o.id, parent: o.parent }];
       default: return [];
     }
   }
@@ -85,6 +86,7 @@ window.Keys = (() => {
       }
       case "move": if (o.from.parent !== o.to.parent) { stale(o.from.parent); stale(o.to.parent); } reveal(o.to.parent); break;
       case "newText": reveal(o.parent); break;
+      case "insertNode": stale(o.parent); reveal(o.parent); break;
     }
     const fwd = [...pre, o];
     return { fwd, inv: fwd.slice().reverse().flatMap(invert), sel: o.keepId || o.id };
@@ -170,6 +172,63 @@ window.Keys = (() => {
     op({ type: "newText", id, parent, index });
     Tree.select(id);
     return id;
+  }
+
+  // ---- dragging: where a dropped row would land, and the two ways to land it ----
+  const depthOf = id => { let d = 0; for (let p = parentOf(id); p; p = parentOf(p)) d++; return d; };
+  // the last row of this subtree that is on screen (a folded row hides its children)
+  function lastVisible(id) {
+    for (;;) {
+      const n = N()[id], rows = T().rows;
+      if (!n || n.folded) return id;
+      const kid = [...n.children].reverse().find(c => rows.get(c) && !rows.get(c).classList.contains("hidden"));
+      if (!kid) return id;
+      id = kid;
+    }
+  }
+  const inside = (id, rootId) => { for (const [n] of Tree.walk([rootId])) if (n.id === id) return true; return false; };
+  // Where would a dragged `kind` land when dropped on the upper ("above") or lower ("below") half of row `overId`?
+  // -> { parent, index (before the row leaves its old place), anchor (the row the landing band hugs), side, depth } or null when it may not go there.
+  // A record goes only under a claim: the lower half of a claim row makes it that claim's last child, a record row (or anything else
+  // inside a claim) makes it a neighbour. A claim goes among a project's children. A text goes wherever a text may.
+  function landing(kind, overId, half, movingId = null) {
+    const o = N()[overId]; if (!o || !kind) return null;
+    if (movingId && inside(overId, movingId)) return null;                    // not onto itself or into its own subtree
+    const below = half === "below", p = parentOf(overId);
+    let res = null;
+    const into = (kind === "record" && o.kind === "claim") || (o.kind === "project" && (kind === "claim" || kind === "text"));
+    if (into) {
+      if (!below) { if (kind === "text") res = null; else return null; }     // the upper half of a container row is not "inside" it
+      else res = { parent: overId, index: kind === "record" ? o.children.length : 0, anchor: kind === "record" ? lastVisible(overId) : overId, side: "bottom", depth: depthOf(overId) + 1 };
+    }
+    if (!res) {
+      if (!canLive(kind, p)) return null;
+      const sib = siblings(p), index = sib.indexOf(overId) + (below ? 1 : 0);
+      if (!p && N()[sib[0]]?.kind === "summary" && index < 1) return null;   // nothing goes above the summary
+      res = { parent: p, index, anchor: below ? lastVisible(overId) : overId, side: below ? "bottom" : "top", depth: depthOf(overId) };
+    }
+    if (movingId && res.parent === parentOf(movingId)) {                       // dropping a row where it already is
+      const i = siblings(res.parent).indexOf(movingId);
+      if ((res.index > i ? res.index - 1 : res.index) === i) return null;
+    }
+    return res;
+  }
+  // a row moves to a landing from landing(); the index it was computed with counts the row itself, the move op's does not
+  function moveTo(id, land) {
+    const n = N()[id]; if (!n || !land || FIXED.includes(n.kind) || inside(land.parent, id)) return false;
+    const p = parentOf(id), i = siblings(p).indexOf(id);
+    const to = land.parent === p && land.index > i ? land.index - 1 : land.index;
+    if (land.parent === p && to === i) return false;
+    op({ type: "move", id, from: { parent: p, index: i }, to: { parent: land.parent, index: to } });
+    return true;
+  }
+  // a node that was made elsewhere (the drawer's copies) lands at parent[index]; undo removes it again
+  function insert(node, parent, index) {
+    if (!node || !node.kind || !canLive(node.kind, parent)) { toast("그 자리에는 놓을 수 없어요"); return null; }
+    const n = clone(node); if (!n.id || N()[n.id]) n.id = newId();
+    n.children = []; // a copy never brings nodes that are not in this tree
+    op({ type: "insertNode", id: n.id, node: n, parent, index: Math.max(0, Math.min(index, siblings(parent).length)) });
+    return n.id;
   }
 
   function flashMs() { return parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--t-flash")) || 0; }
@@ -273,6 +332,6 @@ window.Keys = (() => {
   }
   function reset() { undo = []; redo = []; tp = null; busy = false; } // a different draft: its history starts empty
 
-  return { op, type: typing, typing, move, indent, merge, split, newText, togglePage, hint, bind, reset,
+  return { op, type: typing, typing, move, indent, merge, split, newText, togglePage, hint, bind, reset, insert, landing, moveTo, parentOf,
            undo: () => step(true), redo: () => step(false) };
 })();

@@ -60,6 +60,7 @@ window.NodePane = (() => {
   // ---- pieces ----
   function sourceLine(n) {
     const s = n.src || {};
+    if ((n.marks || []).includes("picked")) return "집은 그림 · 근거 기록 없음";
     if (!s.project && !s.record && !s.chapter) return "내가 쓴 글 · 근거 없음";
     let chapter = "";
     if (n.kind === "record" || n.kind === "flow") {

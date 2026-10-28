@@ -208,6 +208,7 @@ def _own_blocks(n: dict, week: str) -> list[dict]:
         caption = " — ".join(x for x in n.get("caption") or [] if x) or n["title"]
         rep, href = n.get("representative"), n.get("href")
         show = n.get("show") or "representative"
+        week = (n.get("src") or {}).get("week") or week                      # a record copied from another week lives in that week's folder
         k = 0
         img = rep if show == "representative" and rep else (href if href and href.lower().endswith(IMAGE_SUFFIXES) else None)
         if show not in ("representative", "core"):                           # a chosen file
