@@ -2,7 +2,7 @@
 window.Tree = (() => {
   // boot.js (which defines Composer) loads after this file, so look the helpers up at call time
   const api = (...a) => window.Composer.api(...a), esc = s => window.Composer.esc(s), toast = (...a) => window.Composer.toast(...a);
-  const S = { draft: null, sel: null, rows: new Map(), filter: "all", saveTimer: null, rev: 0 };
+  const S = { draft: null, sel: null, rows: new Map(), filter: "all", saveTimer: null, rev: 0, range: null };
   const $ = s => document.querySelector(s);
   const list = () => document.getElementById("treeList");
   const nodes = () => S.draft.nodes;
@@ -25,15 +25,19 @@ window.Tree = (() => {
   function row(n, depth) {
     let li = S.rows.get(n.id);
     if (!li) {
-      li = document.createElement("li"); li.className = "t-row"; li.dataset.id = n.id; li.setAttribute("role", "treeitem"); li.tabIndex = -1;
+      li = document.createElement("li"); li.className = `t-row kind-${n.kind}`; li.dataset.id = n.id; li.setAttribute("role", "treeitem"); li.tabIndex = -1;
       li.innerHTML = `<button type="button" class="t-check" aria-label="켜기/끄기" tabindex="-1"></button><span class="t-rail"></span><span class="t-title"></span><span class="t-marks"></span><span class="t-count"></span>`;
-      li.querySelector(".t-check").addEventListener("click", e => { e.stopPropagation(); toggle(n.id); });
+      li.querySelector(".t-check").addEventListener("click", e => { e.stopPropagation(); select(n.id); toggle(n.id); Keys.hint("toggle"); });
       li.addEventListener("click", () => select(n.id));
-      li.addEventListener("dblclick", () => fold(n.id));
+      li.addEventListener("dblclick", () => { if (n.children?.length) { fold(n.id); Keys.hint("fold"); } });
       S.rows.set(n.id, li);
     }
     li.style.setProperty("--depth", depth); li.setAttribute("aria-level", depth + 1);
-    li.className = `t-row kind-${n.kind}${n.on ? "" : " off"}${n.folded ? " folded" : ""}${n.stale ? " stale" : ""}${n.page ? " page" : ""}${S.sel === n.id ? " sel" : ""}${visible(n) ? "" : " hidden"}`;
+    // classList.toggle (not className=) so a running .flash/.land/.open survives a render
+    li.classList.toggle("off", !n.on); li.classList.toggle("folded", !!n.folded); li.classList.toggle("stale", isStale(n));
+    li.classList.toggle("page", !!n.page); li.classList.toggle("sel", S.sel === n.id); li.classList.toggle("hidden", !visible(n));
+    li.classList.toggle("range", !!S.range?.includes(n.id));
+    li.tabIndex = S.sel === n.id ? 0 : -1; // roving tabindex: Tab from the page lands on the selected row
     li.setAttribute("aria-selected", String(S.sel === n.id));
     if (n.children?.length) li.setAttribute("aria-expanded", String(!n.folded)); else li.removeAttribute("aria-expanded");
     li.querySelector(".t-check").setAttribute("aria-pressed", String(!!n.on));
@@ -63,7 +67,8 @@ window.Tree = (() => {
     const on = all.filter(n => n.on).length, stale = all.filter(isStale).length;
     const m = $(".t-meter");
     const bar = (cls, n, label) => `<i class="${cls}" style="flex:${n}"${n ? "" : " hidden"} title="${label} ${n}"></i>`;
-    m.innerHTML = bar("on", on, "켬") + bar("off", total - on, "끔") + bar("stale", stale, "다듬을 것");
+    m.innerHTML = `<span class="t-bars">${bar("on", on, "켬") + bar("off", total - on, "끔") + bar("stale", stale, "다듬을 것")}</span>`
+      + `<span class="t-nums" aria-hidden="true">켬 ${on} · 끔 ${total - on} · 다듬을 것 ${stale}</span>`;
     m.setAttribute("aria-label", `진행 상황: 켬 ${on}, 끔 ${total - on}, 다듬을 것 ${stale}`);
     const chip = $("#treeStale");
     chip.textContent = stale ? `다듬을 것 ${stale}` : "다듬을 것 없음"; chip.classList.toggle("clear", !stale);
@@ -71,10 +76,12 @@ window.Tree = (() => {
 
   // ---- saving: the whole draft, 600 ms after the last change ----
   const saveState = text => { const el = document.getElementById("saveState"); if (el) el.textContent = text; };
-  async function save(draft, rev) {
+  async function save(draft, rev, leaving = false) {
     S.saveTimer = null;
     try {
-      const saved = await api(`/api/drafts/${draft.id}`, { method: "PUT", body: draft });
+      // leaving the page: keepalive lets the request outlive it, but browsers cap such bodies near 64 KB
+      const body = JSON.stringify(draft);
+      const saved = await api(`/api/drafts/${draft.id}`, { method: "PUT", body, keepalive: leaving && body.length < 60000 });
       if (saved?.updated && draft === S.draft && rev === S.rev) draft.updated = saved.updated;
       if (draft === S.draft && rev === S.rev && !S.saveTimer) saveState("저장됨");
     } catch (e) {
@@ -82,11 +89,15 @@ window.Tree = (() => {
       toast("저장하지 못했습니다 (화면의 변경은 그대로입니다): " + esc(e.message), 8000);
     }
   }
-  function flush() { // leaving a draft with an unsaved change: send it now
-    if (S.saveTimer && S.draft) { clearTimeout(S.saveTimer); save(S.draft, S.rev); }
+  function flush(leaving = false) { // leaving a draft (or the page) with an unsaved change: send it now
+    if (S.saveTimer && S.draft) { clearTimeout(S.saveTimer); save(S.draft, S.rev, leaving); }
   }
+  window.addEventListener("pagehide", () => flush(true));
   function change(mutate) {
+    // a re-render moves rows and the browser drops focus from a moved row: put it back if the keyboard was in the list
+    const ae = document.activeElement, keep = !ae || ae === document.body || list().contains(ae);
     mutate(); S.draft.updated = new Date().toISOString(); S.rev++; render();
+    if (keep) S.rows.get(S.sel)?.focus();
     window.NodePane?.show?.(S.sel);
     clearTimeout(S.saveTimer); saveState("저장 중…");
     const draft = S.draft, rev = S.rev;
@@ -102,10 +113,15 @@ window.Tree = (() => {
     const n = nodes()[id]; if (!n || !n.children?.length) return;
     Keys.op({ type: "fold", id, from: n.folded, to: !n.folded });
   }
-  function select(id) {
+  // range: [upper, lower] when two sibling rows are picked with Shift+↑↓ (to merge them); otherwise none
+  function select(id, range = null) {
     if (!id || !nodes()[id]) return;
-    S.sel = id;
-    for (const [k, li] of S.rows) { li.classList.toggle("sel", k === id); li.setAttribute("aria-selected", String(k === id)); }
+    if (id === S.sel && !range && !S.range) return;
+    S.sel = id; S.range = range;
+    for (const [k, li] of S.rows) {
+      li.classList.toggle("sel", k === id); li.setAttribute("aria-selected", String(k === id));
+      li.classList.toggle("range", !!range?.includes(k)); li.tabIndex = k === id ? 0 : -1;
+    }
     S.rows.get(id)?.focus({ preventScroll: false });
     window.NodePane?.show?.(id); window.Drawer?.show?.(id);
   }
@@ -118,19 +134,14 @@ window.Tree = (() => {
 
   function open(draft) {
     flush();
-    S.draft = draft; S.rows.clear(); S.rev = 0; S.filter = "all"; S.sel = null;
+    S.draft = draft; S.rows.clear(); S.rev = 0; S.filter = "all"; S.sel = null; S.range = null;
+    Keys.reset();
     document.querySelectorAll(".t-filters [data-filter]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.filter === "all")));
     $(".t-head h2").textContent = draft.title || "초안 트리";
     list().replaceChildren();
-    S.sel = draft.root?.[1] || draft.root?.[0] || null; // the first row after the summary: where the writing starts
-    render(); select(S.sel); Keys.bind();
+    const first = draft.root?.[1] || draft.root?.[0] || null; // the first row after the summary: where the writing starts
+    render(); select(first); Keys.bind();
   }
 
-  return { open, render, change, setDraft: change, toggle, fold, select, setFilter, state: S, nodes, walk };
+  return { open, render, change, setDraft: change, toggle, fold, select, setFilter, flush, state: S, nodes, walk };
 })();
-
-// Temporary: Task 7 brings the real keys.js and this block goes away.
-window.Keys = window.Keys?.op ? window.Keys : {
-  op: o => Tree.change(() => { const n = Tree.nodes()[o.id]; if (o.type === "toggle") n.on = o.to; if (o.type === "fold") n.folded = o.to; }),
-  bind() {},
-};

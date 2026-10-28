@@ -760,8 +760,8 @@
   $("#search").oninput = e => { state.query = e.target.value.trim(); renderLibrary(); };
   $$("#typeChips input").forEach(cb => cb.onchange = () => { cb.checked ? state.types.add(cb.value) : state.types.delete(cb.value); renderLibrary(); });
   document.addEventListener("keydown", e => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); scheduleSave(); }
+    if (state.draft?.kind !== "tree" && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+    if (state.draft?.kind !== "tree" && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); scheduleSave(); }
   });
 
   // inbox polling: pick up weeks that arrive while the page is open

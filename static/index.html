@@ -130,6 +130,7 @@
       <h2 id="treeTitle">초안 트리</h2>
       <span class="chip" id="treeWeek"></span>
       <span class="chip" id="treeStale"></span>
+      <button type="button" class="chip t-keysbtn" id="keysBtn" aria-label="단축키 표 열기" title="단축키 (?)">?</button>
       <div class="t-meter" aria-label="진행 상황"></div>
       <div class="t-filters" role="group" aria-label="보기 필터">
         <button type="button" class="chip" data-filter="all" aria-pressed="true">전체</button>
@@ -168,6 +169,34 @@
       <button value="cancel">취소</button>
       <button id="pubGo" value="go" class="primary">올리기</button>
     </div>
+  </form>
+</dialog>
+<dialog id="keysDlg" aria-labelledby="keysTitle">
+  <form method="dialog" class="dlg">
+    <h3 id="keysTitle">트리 단축키</h3>
+    <table class="keys-table">
+      <tbody>
+        <tr><th><kbd>Space</kbd></th><td>켜기 / 끄기</td></tr>
+        <tr><th><kbd>Delete</kbd></th><td>끄기 (줄을 지우지는 않아요)</td></tr>
+        <tr><th><kbd>F</kbd></th><td>접기 / 펴기</td></tr>
+        <tr><th><kbd>↑</kbd> <kbd>↓</kbd></th><td>줄 고르기</td></tr>
+        <tr><th><kbd>←</kbd> <kbd>→</kbd></th><td>접기 · 펴기, 부모 · 자식 줄로 가기</td></tr>
+        <tr><th><kbd>Alt</kbd>+<kbd>↑</kbd> <kbd>↓</kbd></th><td>줄 옮기기 (가장자리에서는 이웃 부모로)</td></tr>
+        <tr><th><kbd>Tab</kbd> <kbd>Shift</kbd>+<kbd>Tab</kbd></th><td>한 단계 안으로 / 밖으로 (요약·프로젝트는 그대로, 기록은 주장 아래에만)</td></tr>
+        <tr><th><kbd>Shift</kbd>+<kbd>↑</kbd> <kbd>↓</kbd></th><td>이웃 줄과 짝 고르기</td></tr>
+        <tr><th><kbd>Ctrl</kbd>+<kbd>M</kbd></th><td>고른 두 줄 합치기 (주장끼리, 내 글끼리)</td></tr>
+        <tr><th>본문에서 <kbd>Enter</kbd> 두 번</th><td>그 자리에서 둘로 나누기</td></tr>
+        <tr><th><kbd>Enter</kbd></th><td>고른 줄 아래에 새 글</td></tr>
+        <tr><th><kbd>Ctrl</kbd>+<kbd>Enter</kbd></th><td>어디서든 새 글</td></tr>
+        <tr><th><kbd>P</kbd></th><td>별도 페이지로 내기 (프로젝트·주장)</td></tr>
+        <tr><th><kbd>Ctrl</kbd>+<kbd>Z</kbd></th><td>되돌리기</td></tr>
+        <tr><th><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></th><td>다시 하기</td></tr>
+        <tr><th><kbd>Ctrl</kbd>+<kbd>S</kbd></th><td>지금 저장</td></tr>
+        <tr><th><kbd>Esc</kbd></th><td>고른 짝 풀기, 한 번 더 누르면 트리에서 나가기</td></tr>
+        <tr><th><kbd>?</kbd></th><td>이 표 열기</td></tr>
+      </tbody>
+    </table>
+    <div class="row"><button value="close" class="primary">닫기</button></div>
   </form>
 </dialog>
 <div id="toast" class="toast" hidden></div>

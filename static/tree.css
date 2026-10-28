@@ -85,6 +85,24 @@ button.chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--
 .d-tabs button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-soft); }
 .d-body { padding: 12px; }
 
+/* meter numbers, the pair picked for merging, split opening, stale dot, shortcut table */
+.t-meter { align-items: center; gap: 8px; }
+.t-bars { flex: 1; display: flex; gap: 4px; min-width: 0; }
+.t-nums { flex: none; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.t-keysbtn { margin-left: auto; padding: 0; width: 22px; justify-content: center; font-weight: 600; }
+.t-row { position: relative; }
+.t-row.range { background: color-mix(in srgb, var(--accent-soft) 70%, transparent); outline: 1px dashed var(--accent); outline-offset: -1px; }
+.t-row.range.sel { background: var(--accent-soft); }
+.t-row.stale .t-title::before { content: "●"; color: var(--mark); font-size: 8px; vertical-align: 2px; margin-right: 6px; }
+.t-row.open::before { content: ""; position: absolute; left: 8px; right: 8px; top: 0; height: 1px; background: var(--accent); transform-origin: center; animation: split-open 140ms var(--ease-out) forwards; pointer-events: none; }
+@keyframes split-open { from { transform: scaleX(0); opacity: 1; } 70% { opacity: 1; } to { transform: scaleX(1); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .t-row.open::before { animation: none; } }
+.keys-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.keys-table th, .keys-table td { padding: 4px 8px 4px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+.keys-table th { white-space: nowrap; font-weight: 500; width: 1%; }
+kbd { font: 500 11px/1.4 var(--font-mono); padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--surface); color: var(--fg); }
+#keysDlg { width: min(560px, 94vw); }
+
 /* narrow window: one column at a time, switched by .t-tabs (the data-pane attribute on #tree) */
 @media (max-width: 1007px) {
   .tree { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }

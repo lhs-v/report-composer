@@ -27,15 +27,27 @@ window.Motion = (() => {
       setTimeout(() => moved.forEach(el => el.style.transition = ""), ms("--t-move") + 20);
     }));
   }
-  const once = (el, cls, t) => { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); setTimeout(() => el.classList.remove(cls), t); };
+  // add a class for t ms and restart it if it is already running; the earlier timer must not cut the new run short
+  const once = (el, cls, t) => {
+    if (!el) return;
+    const timers = el._once || (el._once = {});
+    clearTimeout(timers[cls]);
+    el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+    timers[cls] = setTimeout(() => { el.classList.remove(cls); delete timers[cls]; }, t);
+  };
   const tap = el => { if (el) once(el, "tap", ms("--t-tap") + 20); };
   const flash = els => els.forEach(el => once(el, "flash", ms("--t-flash") + 20));
   const sweep = el => { if (!reduced()) once(el, "sweep", 260); };
   function collapseInto(lower, upper, done) {
     if (reduced() || !ms("--t-move")) { done(); return; }
-    lower.style.height = lower.offsetHeight + "px"; lower.style.overflow = "hidden";
-    requestAnimationFrame(() => { lower.style.transition = "height var(--t-move) var(--ease-out), opacity var(--t-move) linear"; lower.style.height = "0px"; lower.style.opacity = "0"; });
+    // rows have a CSS min-height: pin it too, or the height would stop at one row
+    const h = lower.offsetHeight + "px";
+    lower.style.height = h; lower.style.minHeight = h; lower.style.overflow = "hidden";
+    requestAnimationFrame(() => {
+      lower.style.transition = "height var(--t-move) var(--ease-out), min-height var(--t-move) var(--ease-out), opacity var(--t-move) linear";
+      lower.style.height = "0px"; lower.style.minHeight = "0px"; lower.style.opacity = "0";
+    });
     setTimeout(() => { done(); once(upper.querySelector(".t-title") || upper, "land", 160); }, ms("--t-move") + 10);
   }
-  return { flip, tap, flash, sweep, collapseInto, reduced };
+  return { flip, tap, flash, sweep, collapseInto, once, reduced };
 })();
