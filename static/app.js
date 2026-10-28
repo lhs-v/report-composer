@@ -779,7 +779,9 @@
       const before = new Map(prev.map(w => [w.week, w.updated]));
       state.library = await api("/api/library"); state.weeksInfo = st; if (!state.week && state.library.length) state.week = state.library[0].week; renderWeeks(); renderLibrary(); publishData();
       const wk = state.draft?.week;     // the open tree draft's week changed: let the tree pick up what is new
-      if (state.draft?.kind === "tree" && wk && st.weeks.some(w => w.week === wk && before.get(wk) !== w.updated)) window.Tree?.refresh?.();
+      if (state.draft?.kind === "tree" && wk && st.weeks.some(w => w.week === wk && before.get(wk) !== w.updated)) {
+        try { await window.Tree?.refresh?.(); } catch (e) { console.warn("Tree.refresh failed", e); }
+      }
     } } catch {} }, 5000);
 
   loadAll().catch(e => toast("초기화 실패: " + esc(e.message), 10000));

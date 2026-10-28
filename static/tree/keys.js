@@ -239,11 +239,19 @@ window.Keys = (() => {
   // several nodes that arrived together (a late round) land in one change and one undo step; parents come before their children,
   // index null = the end of the parent. The parent claim's "stale" and a folded host are left alone. Returns how many were placed.
   function insertMany(items) {
+    // decide first what can be placed (a parent may be an earlier item of this same batch), so a batch that places nothing
+    // never re-renders, never bumps the draft's `updated` and never schedules a save
+    const kinds = new Map(), ok = [];
+    for (const it of items) {
+      const k = it.node?.kind, id = it.node?.id, pk = it.parent ? (N()[it.parent]?.kind || kinds.get(it.parent)) : "";
+      if (!id || !k || N()[id] || kinds.has(id) || pk === undefined || !(CHILD_KINDS[pk] || []).includes(k)) continue;
+      kinds.set(id, k); ok.push(it);
+    }
+    if (!ok.length) return 0;
     const done = [], before = order();
     Tree.change(() => {
-      for (const it of items) {
+      for (const it of ok) {
         const node = clone(it.node);
-        if (!node.id || N()[node.id] || (it.parent && !N()[it.parent]) || !canLive(node.kind, it.parent)) continue;
         node.children = [];
         const sib = siblings(it.parent), index = it.index == null ? sib.length : Math.max(0, Math.min(it.index, sib.length));
         const p = plan({ type: "insertNode", id: node.id, node, parent: it.parent, index, quiet: true });

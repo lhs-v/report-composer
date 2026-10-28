@@ -27,7 +27,7 @@ window.Tree = (() => {
     if (!li) {
       li = document.createElement("li"); li.className = `t-row kind-${n.kind}`; li.dataset.id = n.id; li.setAttribute("role", "treeitem"); li.tabIndex = -1;
       li.innerHTML = `<button type="button" class="t-check" aria-label="켜기/끄기" tabindex="-1"></button><span class="t-rail"></span><span class="t-title"></span><span class="t-marks"></span><span class="t-count"></span>`
-        + (n.kind === "project" ? `<span class="t-clear" role="img" aria-label="다듬을 것 없음" title="다듬을 것 없음">✓</span>` : "");
+        + (n.kind === "project" ? `<span class="t-clear" role="img" aria-label="다듬을 것 없음" aria-hidden="true">✓</span>` : "");
       li.querySelector(".t-check").addEventListener("click", e => { e.stopPropagation(); select(n.id); toggle(n.id); Keys.hint("toggle"); });
       li.querySelector(".t-title").draggable = true; // the handle for moving the row; drawer.js owns the drag events
       li.addEventListener("click", () => select(n.id));
@@ -81,7 +81,10 @@ window.Tree = (() => {
       if (p.kind !== "project") continue;
       let clear = true;
       for (const [n] of walk([p.id])) if (isStale(n)) { clear = false; break; }
-      S.rows.get(p.id)?.querySelector(".t-clear")?.classList.toggle("on", clear);
+      const mark = S.rows.get(p.id)?.querySelector(".t-clear"); if (!mark) continue;
+      mark.classList.toggle("on", clear);
+      // off: invisible to screen readers and no hover text; the opacity fade stays
+      if (clear) { mark.removeAttribute("aria-hidden"); mark.title = "다듬을 것 없음"; } else { mark.setAttribute("aria-hidden", "true"); mark.removeAttribute("title"); }
     }
   }
 
@@ -118,6 +121,7 @@ window.Tree = (() => {
       for (const [id, n] of Object.entries(t.nodes)) for (const c of n.children || []) up[c] = id;
       const projectOf = id => { for (let p = up[id]; p; p = up[p]) if (t.nodes[p]?.kind === "project") return p; return null; };
       const placed = new Set(Object.keys(have)), items = [];
+      let skipped = 0;
       const okUnder = (kind, p) => (Keys.childKinds[p ? (have[p] || t.nodes[p]).kind : ""] || []).includes(kind);
       const visit = ids => {
         for (const id of ids) {
@@ -128,18 +132,20 @@ window.Tree = (() => {
             if (parent !== undefined) {
               items.push({ node: { ...n, on: false, marks: [...new Set([...(n.marks || []), "new"])] }, parent, index: null });
               placed.add(id);
-            }
+            } else skipped++; // its claim was merged away and no other parent takes it
           }
           visit(n.children || []);
         }
       };
       visit(t.root || []);
-      if (!items.length) return 0;
-      Keys.insertMany(items);
+      if (items.length) Keys.insertMany(items);
       const added = items.filter(i => have[i.node.id]);
+      skipped += items.length - added.length;                          // insertMany refused them (no parent, wrong kind)
       const records = added.filter(i => i.node.kind === "record").length;
-      if (records) toast(`새로 온 기록 ${records}개를 끈 채 넣었습니다`);
-      else if (added.length) toast(`새로 온 줄 ${added.length}개를 끈 채 넣었습니다`);
+      const rest = skipped ? ` (${skipped}개는 놓을 자리가 없어 건너뜀)` : "";
+      if (records) toast(`새로 온 기록 ${records}개를 끈 채 넣었습니다${rest}`);
+      else if (added.length) toast(`새로 온 줄 ${added.length}개를 끈 채 넣었습니다${rest}`);
+      else if (skipped) toast(`새로 온 줄 ${skipped}개는 놓을 자리가 없어 건너뛰었습니다`);
       return added.length;
     } finally { refreshing = false; }
   }
