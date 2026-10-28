@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+from .llm import PROVIDERS, ProviderSpec
 
 DEFAULT_PORT = 8790
 
@@ -37,6 +40,16 @@ class GeminiConfig:
 
 
 @dataclass
+class LlmConfig:
+    """Which command-line model tool writes and polishes text. Empty `provider` = not chosen yet. `command` and
+    `model` fall back to the vocabulary table; `fallback` is tried once when the main provider fails."""
+    provider: str = ""
+    command: str = ""
+    model: str = ""
+    fallback: ProviderSpec | None = None
+
+
+@dataclass
 class Config:
     inbox_dir: Path = field(default_factory=lambda: Path.home() / "Downloads" / "report-inbox")
     workspace_dir: Path = field(default_factory=lambda: Path.home() / "report-composer")
@@ -46,6 +59,7 @@ class Config:
     page_host: str = "localhost"
     confluence: ConfluenceConfig = field(default_factory=ConfluenceConfig)
     gemini: GeminiConfig = field(default_factory=GeminiConfig)
+    llm: LlmConfig = field(default_factory=LlmConfig)
     path: Path | None = None
 
     def public(self) -> dict:
@@ -54,6 +68,8 @@ class Config:
         d["inbox_dir"], d["workspace_dir"], d["path"] = str(self.inbox_dir), str(self.workspace_dir), (str(self.path) if self.path else None)
         d["confluence"]["pat"] = "***" if self.confluence.pat else ""
         d["confluence"]["configured"] = self.confluence.configured
+        d["llm"] = asdict(self.llm)                        # commands and model names only; no secrets here
+        d["providers"] = {k: dict(v) for k, v in PROVIDERS.items()}
         return d
 
 
@@ -65,6 +81,27 @@ def page_host(value: str) -> str:
         print(f"page_host {value!r} is not a host name apart from 127.0.0.1; using localhost")
         return "localhost"
     return v
+
+
+def _spec_from_raw(d: dict) -> ProviderSpec | None:
+    if not isinstance(d, dict) or not d.get("provider"):
+        return None
+    return ProviderSpec(str(d["provider"]), str(d.get("command") or ""), str(d.get("model") or ""))
+
+
+def _llm_from_raw(d: dict) -> LlmConfig:
+    return LlmConfig(provider=str(d.get("provider") or ""), command=str(d.get("command") or ""), model=str(d.get("model") or ""),
+                     fallback=_spec_from_raw(d.get("fallback")))
+
+
+def save_llm(path: Path, llm: LlmConfig) -> None:
+    """Rewrite only the `llm` key of the config file (every other key, the Confluence token included, stays as it is)."""
+    path = Path(path)
+    raw = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    raw["llm"] = asdict(llm)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def load_config(path: Path | None) -> Config:
@@ -81,6 +118,10 @@ def load_config(path: Path | None) -> Config:
             cfg.page_host = page_host(str(raw["page_host"]))
         g = raw.get("gemini") or {}
         cfg.gemini = GeminiConfig(command=str(g.get("command") or "gemini"), model=str(g.get("model") or GeminiConfig.model))
+        if isinstance(raw.get("llm"), dict):
+            cfg.llm = _llm_from_raw(raw["llm"])
+        elif raw.get("gemini"):                            # a config from before the llm key: it meant Gemini
+            cfg.llm = LlmConfig(provider="gemini", command=cfg.gemini.command, model=cfg.gemini.model)
         c = raw.get("confluence") or {}
         cfg.confluence = ConfluenceConfig(
             base_url=str(c.get("base_url") or "").rstrip("/"),
