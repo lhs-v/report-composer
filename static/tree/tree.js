@@ -93,6 +93,7 @@ window.Tree = (() => {
     if (S.saveTimer && S.draft) { clearTimeout(S.saveTimer); save(S.draft, S.rev, leaving); }
   }
   window.addEventListener("pagehide", () => flush(true));
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(true); }); // a tab switch or a closing window may never fire pagehide
   function change(mutate) {
     // a re-render moves rows and the browser drops focus from a moved row: put it back if the keyboard was in the list
     const ae = document.activeElement, keep = !ae || ae === document.body || list().contains(ae);

@@ -37,7 +37,7 @@ window.Keys = (() => {
         if (!n) break;
         const sib = siblings(o.parent);
         n.text = n.text.slice(0, o.at).trimEnd(); n.stale = true;
-        N()[o.newId] = { ...clone(n), id: o.newId, title: o.title2, text: o.text2, children: [], stale: true,
+        N()[o.newId] = { ...clone(n), id: o.newId, title: o.title2, text: o.text2, children: [], stale: true, page: false, folded: false,
           marks: n.kind === "text" ? [...(n.marks || [])] : (n.marks || []).filter(m => m !== "noref") }; // a typed text still has no source
         sib.splice(sib.indexOf(o.id) + 1, 0, o.newId); break;
       }
