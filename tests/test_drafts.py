@@ -47,6 +47,27 @@ class DraftTests(unittest.TestCase):
         self.assertIsNone(self.drafts.get(d["id"]))
         self.assertEqual(self.drafts.list(), [])
 
+    def test_tree_drafts_are_validated_and_listed_with_their_kind(self):
+        tree = {"nodes": {"n-a": {"id": "n-a", "kind": "summary", "title": "요약", "text": "x", "on": True, "folded": False, "page": False, "stale": False,
+                                  "src": {"week": "2026-W43", "project": None, "chapter": None, "record": None}, "marks": [], "tier": "main", "children": []}},
+                "root": ["n-a"], "round": 1}
+        d = self.drafts.create_tree("트리 초안", "2026-W43", tree)
+        self.assertEqual((d["kind"], d["week"], d["root"]), ("tree", "2026-W43", ["n-a"]))
+        self.assertEqual(self.drafts.list()[0]["kind"], "tree")
+        d["nodes"]["n-a"]["children"] = ["n-missing"]
+        with self.assertRaises(ValueError):
+            self.drafts.save(d)
+        d["nodes"]["n-a"]["children"] = []
+        d["nodes"]["n-a"]["kind"] = "banana"
+        with self.assertRaises(ValueError):
+            self.drafts.save(d)
+        d["nodes"]["n-a"]["kind"] = "summary"
+        d["root"] = ["n-missing"]
+        with self.assertRaises(ValueError):
+            self.drafts.save(d)
+        self.drafts.create("블록")
+        self.assertEqual({"tree", "blocks"}, {x["kind"] for x in self.drafts.list()})
+
 
 if __name__ == "__main__":
     unittest.main()

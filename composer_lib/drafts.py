@@ -8,6 +8,8 @@ import os
 import secrets
 from pathlib import Path
 
+from .outline import KINDS
+
 BLOCK_TYPES = {"heading", "paragraph", "bullets", "image", "file", "divider", "callout", "table", "columns"}
 
 
@@ -40,13 +42,37 @@ class Drafts:
             except ValueError:
                 continue
             out.append({"id": d["id"], "title": d.get("title", ""), "updated": d.get("updated"), "created": d.get("created"),
-                        "block_count": len(d.get("blocks") or []), "confluence": d.get("confluence")})
+                        "block_count": len(d.get("blocks") or []), "confluence": d.get("confluence"),
+                        "kind": d.get("kind") or "blocks", "week": d.get("week")})
         return sorted(out, key=lambda d: d.get("updated") or "", reverse=True)
 
     def create(self, title: str) -> dict:
         now = _now()
         return self._write({"id": f"d-{secrets.token_hex(6)}", "title": title or "제목 없음", "created": now, "updated": now,
                             "blocks": [], "confluence": None})
+
+    def create_tree(self, title: str, week: str, tree: dict) -> dict:
+        now = _now()
+        d = {"id": f"d-{secrets.token_hex(6)}", "title": title or "제목 없음", "kind": "tree", "week": week,
+             "round": int(tree.get("round") or 1), "created": now, "updated": now,
+             "nodes": tree["nodes"], "root": list(tree["root"]), "confluence": None, "pages": {}}
+        self._validate_tree(d)
+        return self._write(d)
+
+    @staticmethod
+    def _validate_tree(d: dict) -> None:
+        nodes = d.get("nodes")
+        if not isinstance(nodes, dict) or not isinstance(d.get("root"), list):
+            raise ValueError("tree draft needs nodes and root")
+        for nid, n in nodes.items():
+            if not isinstance(n, dict) or n.get("kind") not in KINDS:
+                raise ValueError(f"unknown node kind: {n.get('kind') if isinstance(n, dict) else n!r}")
+            for c in n.get("children") or []:
+                if c not in nodes:
+                    raise ValueError(f"child {c} of {nid} is not a node")
+        for r in d["root"]:
+            if r not in nodes:
+                raise ValueError(f"root {r} is not a node")
 
     def get(self, draft_id: str) -> dict | None:
         p = self._path(draft_id)
@@ -55,9 +81,12 @@ class Drafts:
         return json.loads(p.read_text(encoding="utf-8"))
 
     def save(self, draft: dict) -> dict:
-        for b in draft.get("blocks") or []:
-            if not isinstance(b, dict) or b.get("type") not in BLOCK_TYPES:
-                raise ValueError(f"unknown block type: {b.get('type') if isinstance(b, dict) else b!r}")
+        if draft.get("kind") == "tree":
+            self._validate_tree(draft)
+        else:
+            for b in draft.get("blocks") or []:
+                if not isinstance(b, dict) or b.get("type") not in BLOCK_TYPES:
+                    raise ValueError(f"unknown block type: {b.get('type') if isinstance(b, dict) else b!r}")
         existing = self.get(draft["id"]) or {}
         merged = {**existing, **draft, "updated": _now()}
         merged.setdefault("created", merged["updated"])
