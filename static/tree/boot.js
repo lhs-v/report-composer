@@ -45,4 +45,8 @@
   });
 
   window.Composer = { api, esc, toast, route };
+
+  // app.js may have opened a draft before this file ran (its first route() call found no Composer): route it once now
+  const openId = $("#draftSelect").value;
+  if (openId && !window.Tree?.state?.draft) api(`/api/drafts/${openId}`).then(route).catch(() => {});
 })();
