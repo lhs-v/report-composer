@@ -31,7 +31,13 @@ window.Aids = (() => {
   }
   // a tree draft opened: another draft's jobs are forgotten, the same draft's keep running
   function open(draft) {
-    if (draft?.id !== S.draftId) { for (const id of Object.keys(S.jobs)) stop(id); S.jobs = {}; S.draftId = draft?.id || null; }
+    if ((draft?.id || null) !== S.draftId) {
+      for (const [id, j] of Object.entries(S.jobs)) {
+        stop(id);
+        if (j.id && (j.status === "queued" || j.status === "running")) api(`/api/llm/jobs/${j.id}/cancel`, { method: "POST", body: {} }).catch(() => {});
+      }
+      S.jobs = {}; S.draftId = draft?.id || null;       // a job still on its way to the server cancels itself when it finds its entry gone
+    }
     refresh();
   }
 
@@ -148,14 +154,14 @@ window.Aids = (() => {
         host.innerHTML = `<div class="n-aidfail" role="alert"><span class="n-ftext">${esc(j.error)}</span><button type="button" class="n-fclose">닫기</button></div>`;
         host.querySelector(".n-fclose").addEventListener("click", () => discard(nodeId));
       } else {
-        host.innerHTML = `<div class="n-progress" role="status"><span class="n-pbar" aria-hidden="true"></span><span class="n-ptext"></span>`
+        host.innerHTML = `<div class="n-progress" role="status"><span class="n-pbar" aria-hidden="true"></span><span class="n-ptext">다시 쓰는 중<span class="n-psec" aria-hidden="true"></span></span>`
           + `<button type="button" class="n-pcancel" aria-label="취소" title="취소">×</button></div>`;
         host.querySelector(".n-pcancel").addEventListener("click", () => cancel(nodeId));
       }
     }
-    const t = host.querySelector(".n-ptext");
+    const t = host.querySelector(".n-psec");                                  // the seconds tick silently: a screen reader hears the static text once
     if (t && (j.status === "queued" || j.status === "running")) {
-      const text = `${j.status === "queued" && j.id ? "차례를 기다리는 중" : "다시 쓰는 중"} · ${Math.floor((Date.now() - j.t0) / 1000)}초`;
+      const text = ` · ${Math.floor((Date.now() - j.t0) / 1000)}초`;
       if (t.textContent !== text) t.textContent = text;
     }
   }
@@ -172,13 +178,22 @@ window.Aids = (() => {
   }
   function fillDialog() {
     const llm = S.llm || {}, fb = llm.fallback || null;
-    const names = Object.keys(S.providers), label = n => S.providers[n].label + (S.available[n] ? "" : " — 설치 안 됨");
-    $("llmProvider").replaceChildren(opt("", "사용 안 함"), ...names.map(n => opt(n, label(n))));
-    $("llmFbProvider").replaceChildren(opt("", "없음"), ...names.map(n => opt(n, label(n))));
+    const names = Object.keys(S.providers);
+    $("llmProvider").replaceChildren(opt("", "사용 안 함"), ...names.map(n => opt(n, "")));
+    $("llmFbProvider").replaceChildren(opt("", "없음"), ...names.map(n => opt(n, "")));
     $("llmProvider").value = llm.provider || ""; $("llmCommand").value = llm.command || ""; $("llmModel").value = llm.model || "";
     $("llmFbProvider").value = fb?.provider || ""; $("llmFbModel").value = fb?.model || "";
-    hints("llm"); hints("fb");
+    hints("llm"); hints("fb"); relabel();
     setResult("", "");
+  }
+  // a CLI is marked "설치 안 됨" only when it was not found under its own default name: a command typed or saved for it
+  // (a full path, a wrapper) is not judged here, the test call is the check
+  function relabel() {
+    const typed = $("llmProvider").value, llm = S.llm || {};
+    const override = n => (n === typed ? $("llmCommand").value.trim() : n === llm.provider ? llm.command : "") || (llm.fallback?.provider === n ? llm.fallback.command : "") || "";
+    for (const sel of [$("llmProvider"), $("llmFbProvider")]) {
+      for (const o of sel.options) if (o.value) o.textContent = S.providers[o.value].label + (S.available[o.value] || override(o.value) ? "" : " — 설치 안 됨");
+    }
   }
   function setResult(text, cls) { const r = $("llmResult"); r.textContent = text; r.className = "small " + cls; }
   const form = () => {
@@ -192,7 +207,7 @@ window.Aids = (() => {
     const btn = $("llmTest"); btn.disabled = true; setResult("시험 호출 중… (보통 몇 초)", "muted");
     try {
       const r = await api("/api/llm/test", { method: "POST", body: { provider: f.provider, command: f.command, model: f.model } });
-      if (r.ok) setResult(`OK · ${secs(r.ms || 0)} · ${String(r.answer || "").slice(0, 40)}`, "ok");
+      if (r.ok) setResult(`OK · ${secs(r.ms || 0)} · ${f.provider}:${f.model || S.providers[f.provider]?.default || ""}`, "ok");   // which tool and model answered, not what it said
       else setResult(r.error || "실패했습니다", "error");
     } catch (e) { setResult(e.message, "error"); }
     finally { btn.disabled = false; }
@@ -218,7 +233,8 @@ window.Aids = (() => {
     $("llmClose")?.addEventListener("click", () => dlg().close());
     $("llmTest")?.addEventListener("click", testCall);
     $("llmSave")?.addEventListener("click", save);
-    $("llmProvider")?.addEventListener("change", () => { $("llmCommand").value = ""; $("llmModel").value = ""; hints("llm"); setResult("", ""); });
+    $("llmProvider")?.addEventListener("change", () => { $("llmCommand").value = ""; $("llmModel").value = ""; hints("llm"); relabel(); setResult("", ""); });
+    $("llmCommand")?.addEventListener("input", relabel);
     $("llmFbProvider")?.addEventListener("change", () => { $("llmFbModel").value = ""; hints("fb"); });
     dlg()?.querySelector("form")?.addEventListener("submit", e => { e.preventDefault(); save(); });   // Enter in a field saves; it does not just close
   }

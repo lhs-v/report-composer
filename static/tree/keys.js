@@ -94,10 +94,9 @@ window.Keys = (() => {
         o.snapshot = { node: clone(gone), parent: p, index: siblings(p).indexOf(o.goneId), keepText: keep.text, keepChildren: [...keep.children], keepStale: keep.stale };
         stale(p); summary(); break;
       }
-      case "removeNode": summary(); break;
       case "move": if (o.from.parent !== o.to.parent) { stale(o.from.parent); stale(o.to.parent); } reveal(o.to.parent); break;
       case "newText": reveal(o.parent); break;
-      case "insertNode": if (!o.quiet) { stale(o.parent); reveal(o.parent); } summary(); break; // quiet: a late record joins without touching its claim (the summary still hears of it)
+      case "insertNode": if (!o.quiet) { stale(o.parent); reveal(o.parent); } if (o.node?.on) summary(); break; // quiet: a late record joins without touching its claim; it arrives off, so the summary does not hear of it either
     }
     const fwd = [...pre, o];
     return { fwd, inv: fwd.slice().reverse().flatMap(invert), sel: o.keepId || o.id };

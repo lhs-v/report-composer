@@ -19,7 +19,7 @@
     $("main.cols").hidden = isTree;
     $("#tree").hidden = !isTree;
     for (const id of ["dupDraft", "undoBtn", "redoBtn", "polishBtn"]) { const b = $("#" + id); if (b) b.disabled = isTree; }
-    if (!isTree) return;
+    if (!isTree) { window.Aids?.open?.(null); return; }   // no tree draft: its jobs are cancelled and their timers stop
     $("#treeTitle").textContent = draft.title || "초안 트리";
     $("#treeWeek").textContent = draft.week || "";
     $("#treeWeek").hidden = !draft.week;
