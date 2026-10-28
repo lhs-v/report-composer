@@ -359,6 +359,20 @@ class ServerV3Tests(unittest.TestCase):
                     {"record": R_PAGE, "text": ["a"], "week": "W43"}):
             self.assertEqual(self.req("/api/memory/caption", "PUT", bad)[0], 400, bad)
 
+    def test_an_unreadable_outcomes_file_answers_422_not_a_dropped_connection(self):
+        import shutil
+        for week, text in (("2026-W50", "{not json"), ("2026-W51", "[]")):
+            folder = self.weeks / week
+            folder.mkdir()
+            self.addCleanup(shutil.rmtree, folder, True)
+            (folder / "outcomes.json").write_text(text, encoding="utf-8")
+            code, body = self.req(f"/api/outline/{week}")
+            self.assertEqual(code, 422, week)
+            self.assertIn("error", json.loads(body))
+            code, body = self.req("/api/drafts/tree", "POST", {"title": "x", "week": week})
+            self.assertEqual(code, 422, week)
+            self.assertIn("error", json.loads(body))
+
     def test_state_reports_when_a_week_folder_last_changed(self):
         import os
         import time

@@ -41,6 +41,10 @@ from .storage import attachment_name, attachments_for, package_file, render, val
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
+class OutlineError(Exception):
+    """outcomes.json exists but cannot be turned into a draft tree (corrupt JSON, wrong shape)."""
+
+
 class App:
     def __init__(self, cfg: Config, transport=None):
         self.cfg = cfg
@@ -68,8 +72,11 @@ class App:
         meta = self.weeks_dir / week / "outcomes.json"
         if not re.fullmatch(r"\d{4}-W\d{2}", week) or not meta.is_file():
             raise KeyError(week)
-        data = json.loads(meta.read_text(encoding="utf-8"))
-        return build_tree(data, week, self.memory.data())
+        try:
+            data = json.loads(meta.read_text(encoding="utf-8"))
+            return build_tree(data, week, self.memory.data())
+        except (OSError, ValueError, AttributeError, TypeError) as e:
+            raise OutlineError(f"outcomes.json을 읽지 못했습니다: {type(e).__name__}") from e
 
     def blocks_of(self, draft: dict) -> list[dict]:
         if draft.get("kind") == "tree":
@@ -95,14 +102,15 @@ class App:
         if folder.exists():
             shutil.rmtree(folder)
         folder.mkdir(parents=True)
+        blocks = self.blocks_of(draft)
         copied = []
-        for name, src in attachments_for(self.blocks_of(draft)).items():
+        for name, src in attachments_for(blocks).items():
             fp = package_file(self.weeks_dir, src)
             if fp:
                 shutil.copy2(fp, folder / name)
                 copied.append(name)
-        (folder / "body.html").write_text(render(self.blocks_of(draft)), encoding="utf-8")
-        doc, manual = paste_html(draft.get("title") or "제목 없음", self.blocks_of(draft), self.weeks_dir)
+        (folder / "body.html").write_text(render(blocks), encoding="utf-8")
+        doc, manual = paste_html(draft.get("title") or "제목 없음", blocks, self.weeks_dir)
         (folder / "paste.html").write_text(doc, encoding="utf-8")
         (folder / "읽어주세요.txt").write_text(readme_text(draft.get("title") or "제목 없음", manual), encoding="utf-8")
         return {"folder": str(folder), "files": copied, "paste_html": str(folder / "paste.html"), "manual_files": manual}
@@ -298,6 +306,8 @@ def make_handler(app: App):
                     return self._json(200, app.outline(m.group(1)))
                 except KeyError:
                     return self._json(404, {"error": "그 주차의 outcomes.json이 없습니다"})
+                except OutlineError as e:
+                    return self._json(422, {"error": str(e)})
             if p == "/api/memory":
                 return self._json(200, app.memory.data())
             if p == "/api/drafts":
@@ -416,6 +426,8 @@ def make_handler(app: App):
                     tree = app.outline(week)
                 except KeyError:
                     return self._json(404, {"error": "그 주차의 outcomes.json이 없습니다"})
+                except OutlineError as e:
+                    return self._json(422, {"error": str(e)})
                 return self._json(200, app.drafts.create_tree(str(body.get("title") or f"주간 보고 {week}"), week, tree))
             if p == "/api/open":
                 target = Path(str(body.get("path") or "")).resolve()
