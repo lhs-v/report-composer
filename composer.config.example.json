@@ -3,6 +3,17 @@
   "inbox_dir": "~/Downloads/report-inbox",
   "workspace_dir": "~/report-composer",
   "port": 8790,
+  "llm": {
+    "provider": "claude",
+    "command": "claude",
+    "model": "sonnet",
+    "fallback": {"provider": "gemini", "command": "gemini", "model": "gemini-3.8-flash"}
+  },
+  "gemini": {
+    "_comment": "옛 형식(자동 이전): llm 키가 없을 때만 읽혀 llm.provider=gemini로 옮겨집니다. 블록 초안의 다듬기(✨)는 이 키의 command·model을 계속 씁니다.",
+    "command": "gemini",
+    "model": "gemini-3.8-flash"
+  },
   "confluence": {
     "base_url": "https://confluence.example.com",
     "pat": "PASTE-TOKEN-HERE",

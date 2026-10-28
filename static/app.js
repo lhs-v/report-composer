@@ -44,8 +44,10 @@
     const pill = $("#inboxStatus");
     if (st.version) {                                                          // which build is running, at a glance
       const stale = st.file_version && st.file_version !== st.version;
-      $("#appVersion").textContent = "v" + st.version + (stale ? ` — 폴더에는 v${st.file_version}: 컴포저를 껐다 켜세요` : "");
-      $("#appVersion").classList.toggle("stale", !!stale);
+      const staticOld = st.static_version !== undefined && st.static_version !== st.version;   // composer_lib was overwritten but static/ was not
+      $("#appVersion").textContent = "v" + st.version + (stale ? ` — 폴더에는 v${st.file_version}: 컴포저를 껐다 켜세요` : "")
+        + (staticOld ? ` — static 폴더가 v${st.static_version}: zip의 static 폴더(tree 포함)도 덮어쓰고 새로 고침하세요` : "");
+      $("#appVersion").classList.toggle("stale", !!(stale || staticOld));
     }
     pill.title = `받은편지함: ${st.config.inbox_dir}`;
     if (pending.length) {

@@ -173,7 +173,7 @@ class App:
     def state(self) -> dict:
         weeks = [{"week": p.name, "has_outcomes": (p / "outcomes.json").exists(), "updated": self.week_updated(p)} for p in sorted(self.weeks_dir.iterdir(), reverse=True) if p.is_dir()]
         inbox = [s.summary() for s in scan(self.cfg.inbox_dir, self.cfg.workspace_dir).values()]
-        return {"config": self.cfg.public(), "version": __version__, "file_version": installed_version(),
+        return {"config": self.cfg.public(), "version": __version__, "file_version": installed_version(), "static_version": static_version(),
                 "gemini": {"model": self.cfg.gemini.model, "command": self.cfg.gemini.command},
                 "inbox": inbox, "inbox_status": self.last_inbox, "weeks": weeks,
                 "static_ok": (STATIC_DIR / "index.html").exists()}
@@ -241,6 +241,17 @@ def installed_version() -> str | None:
         return m.group(1) if m else None
     except OSError:
         return None
+
+
+def static_version() -> str:
+    """The version stamped into static/index.html (`<meta name="composer-static">`) — when only composer_lib is
+    overwritten from a new zip, the code says one version and the pages another, and the title bar says so."""
+    try:
+        text = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+        m = re.search(r'<meta\s+name="composer-static"\s+content="([^"]*)"', text)
+        return m.group(1) if m else "0"
+    except OSError:
+        return "0"
 
 
 def wrap_page(fragment: str, base_href: str) -> str:
@@ -492,6 +503,8 @@ def make_handler(app: App):
                 return self._json(200, {"xhtml": xhtml, "error": validate(xhtml)})
             if p == "/api/polish":
                 from .polish import PolishError, polish_draft
+                if app.cfg.llm.provider and app.cfg.llm.provider != "gemini":
+                    return self._json(409, {"error": "블록 초안 다듬기는 Gemini CLI 전용입니다. 트리 초안의 다시 쓰기는 설정한 공급자를 씁니다"})
                 did = str(body.get("draft_id") or "")
                 if not re.fullmatch(r"d-[0-9a-f]+", did):
                     return self._json(400, {"error": "draft_id"})

@@ -213,6 +213,27 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(st["version"], __version__)
         self.assertEqual(st["file_version"], __version__)                       # same here; a stale process would differ
 
+    def test_state_tells_the_version_of_the_static_folder(self):
+        from composer_lib import __version__
+        status, st = self.req("/api/state")
+        self.assertEqual(st["static_version"], __version__)                     # code and static/ must be released together
+
+    def test_polish_is_gemini_only_and_says_so_when_another_provider_is_chosen(self):
+        status, d = self.req("/api/drafts", "POST", {"title": "초안"})
+        d["blocks"] = [{"id": "x1", "type": "paragraph", "text": "맵 만듬"}]
+        self.req(f"/api/drafts/{d['id']}", "PUT", d)
+        self.cfg.llm.provider = "claude"
+        status, res = self.req("/api/polish", "POST", {"draft_id": d["id"]})
+        self.assertEqual(status, 409)
+        err = res if isinstance(res, dict) else json.loads(res)
+        self.assertIn("Gemini CLI 전용", err["error"])
+        self.cfg.llm.provider = "gemini"                                        # gemini (or nothing chosen) goes on to the polish itself
+        self.cfg.gemini.command = "no-such-gemini-cli"
+        status, res = self.req("/api/polish", "POST", {"draft_id": d["id"]})
+        self.assertEqual(status, 409)
+        err = res if isinstance(res, dict) else json.loads(res)
+        self.assertIn("no-such-gemini-cli", err["error"])
+
     def test_a_page_opens_the_720p_copy_where_an_older_package_pointed_home(self):
         from composer_lib.server import substitute_copies
         w = self.cfg.workspace_dir / "weeks" / "2026-W42" / "records" / "alpha" / "R-1"
