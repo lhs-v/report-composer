@@ -33,6 +33,8 @@ def rule_caption(rec: dict) -> list[str]:
 def rule_summary(data: dict) -> list[str]:
     lines = []
     for project, p in (data.get("projects") or {}).items():
+        if not isinstance(p, dict):
+            continue
         titles = [c["title"] for c in p.get("chapters") or [] if isinstance(c, dict) and c.get("title") and (c.get("tier") or "main") == "main"]
         if titles:
             lines.append(f"{short_project(project)}: " + " · ".join(titles[:3]))
@@ -52,7 +54,7 @@ def initial_on(kind: str, ctx: dict) -> tuple[bool, bool]:
         if ctx.get("sent") not in ("core", "support"):
             return False, False
         if ctx.get("home_core"):
-            return True, True
+            return (bool(ctx.get("new")), True)
         return (bool(ctx.get("new")), False)
     if kind == "flow":
         return (ctx.get("n", 0) >= 2, True)
@@ -63,20 +65,42 @@ def initial_on(kind: str, ctx: dict) -> tuple[bool, bool]:
     return True, False
 
 
-def _ledger_items(x: dict | None) -> list[dict]:
-    if not x:
+def _item_text(x) -> str:
+    if isinstance(x, dict):
+        x = x.get("text")
+    return "" if x is None else str(x)
+
+
+def _list(x) -> list:
+    return x if isinstance(x, list) else []
+
+
+def _ledger_items(x) -> list[dict]:
+    if not isinstance(x, dict):
         return []
-    items = [{"kind": "decision", "text": d} for d in x.get("decisions") or []]
-    items += [{"kind": "resolved", "text": r} for r in x.get("resolved") or []]
-    items += [{"kind": "open", "text": o.get("text", "") if isinstance(o, dict) else str(o)} for o in x.get("open") or []]
-    items += [{"kind": "next", "text": s.get("text", "") if isinstance(s, dict) else str(s)} for s in x.get("next_steps") or []]
+    items = []
+    for kind, key in (("decision", "decisions"), ("resolved", "resolved"), ("open", "open"), ("next", "next_steps")):
+        items += [{"kind": kind, "text": _item_text(v)} for v in _list(x.get(key))]
     return [i for i in items if i["text"]]
+
+
+def _caption_lines(value) -> list[str] | None:
+    """A caption from a seed or from memory: a list of lines, or a bare string (one line); anything else is ignored."""
+    if isinstance(value, str):
+        value = [value]
+    if isinstance(value, list):
+        lines = [str(x) for x in value if x is not None and str(x).strip()]
+        return lines[:2] or None
+    return None
 
 
 def build_tree(data: dict, week: str, memory: dict | None = None) -> dict:
     memory = memory or {}
     captions, used = memory.get("captions") or {}, memory.get("used") or {}
-    rnd = int(data.get("round") or 1)
+    try:
+        rnd = int(data.get("round") or 1)
+    except (TypeError, ValueError):
+        rnd = 1
     nodes: dict[str, dict] = {}
     root: list[str] = []
 
@@ -87,7 +111,8 @@ def build_tree(data: dict, week: str, memory: dict | None = None) -> dict:
     def used_elsewhere(key: str) -> bool:
         return any(w != week for w in used.get(key) or [])
 
-    summary = [str(s) for s in ((data.get("outline") or {}).get("summary") or [])] or rule_summary(data)
+    outline = data.get("outline") if isinstance(data.get("outline"), dict) else {}
+    summary = [str(s) for s in _list(outline.get("summary"))] or rule_summary(data)
     root.append(add(_node(node_id(week, None, None, None, "summary"), "summary", "이번 주 요약", "\n".join(summary), src={"week": week})))
     records = [r for r in data.get("records") or [] if isinstance(r, dict) and r.get("sent") in ("core", "support")]
     for project, p in (data.get("projects") or {}).items():
@@ -139,8 +164,8 @@ def _record_node(week: str, project: str, cid: str, r: dict, rnd: int, captions:
     new = rnd == 1 or bool(r.get("in_round"))
     on, folded = initial_on("record", {"sent": r.get("sent"), "new": new, "home_core": home_core})
     marks = ["new" if new else "sent"] + (["home"] if home_core else []) + (["used"] if used_elsewhere(rid) else [])
-    remembered = (captions.get(rid) or {}).get("text")
-    caption = [str(x) for x in (remembered or r.get("caption") or rule_caption(r))][:2]
+    entry = captions.get(rid)
+    caption = _caption_lines(entry.get("text") if isinstance(entry, dict) else entry) or _caption_lines(r.get("caption")) or rule_caption(r)[:2]
     show = "representative" if r.get("representative") else ("core" if r.get("href") else "")
     return _node(node_id(week, project, cid, rid, "record"), "record", str(r.get("title") or rid), "", on=on, folded=folded,
                  src={"week": week, "project": project, "chapter": cid, "record": rid}, marks=marks,
