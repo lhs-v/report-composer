@@ -44,7 +44,9 @@
     const pill = $("#inboxStatus");
     if (st.version) {                                                          // which build is running, at a glance
       const stale = st.file_version && st.file_version !== st.version;
-      const staticOld = st.static_version !== undefined && st.static_version !== st.version;   // composer_lib was overwritten but static/ was not
+      const vnum = v => String(v ?? "0").split(".").map(n => parseInt(n, 10) || 0);
+      const older = (a, b) => { const x = vnum(a), y = vnum(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d < 0; } return false; };
+      const staticOld = st.static_version !== undefined && older(st.static_version, st.version);   // composer_lib was overwritten but static/ was not (a newer static/ is the file_version note's case)
       $("#appVersion").textContent = "v" + st.version + (stale ? ` — 폴더에는 v${st.file_version}: 컴포저를 껐다 켜세요` : "")
         + (staticOld ? ` — static 폴더가 v${st.static_version}: zip의 static 폴더(tree 포함)도 덮어쓰고 새로 고침하세요` : "");
       $("#appVersion").classList.toggle("stale", !!(stale || staticOld));

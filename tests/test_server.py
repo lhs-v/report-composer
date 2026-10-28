@@ -218,6 +218,20 @@ class ServerTests(unittest.TestCase):
         status, st = self.req("/api/state")
         self.assertEqual(st["static_version"], __version__)                     # code and static/ must be released together
 
+    def test_static_version_is_zero_when_the_meta_is_missing(self):
+        from composer_lib import server
+        with tempfile.TemporaryDirectory() as d:
+            old = server.STATIC_DIR
+            try:
+                server.STATIC_DIR = Path(d)
+                self.assertEqual(server.static_version(), "0")                  # no index.html at all
+                (Path(d) / "index.html").write_text("<html><head></head></html>", encoding="utf-8")
+                self.assertEqual(server.static_version(), "0")                  # an index.html without the meta
+                (Path(d) / "index.html").write_text('<meta name="composer-static" content="1.0.0">', encoding="utf-8")
+                self.assertEqual(server.static_version(), "1.0.0")
+            finally:
+                server.STATIC_DIR = old
+
     def test_polish_is_gemini_only_and_says_so_when_another_provider_is_chosen(self):
         status, d = self.req("/api/drafts", "POST", {"title": "초안"})
         d["blocks"] = [{"id": "x1", "type": "paragraph", "text": "맵 만듬"}]

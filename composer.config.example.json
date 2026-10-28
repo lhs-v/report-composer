@@ -4,13 +4,13 @@
   "workspace_dir": "~/report-composer",
   "port": 8790,
   "llm": {
-    "provider": "claude",
-    "command": "claude",
-    "model": "sonnet",
-    "fallback": {"provider": "gemini", "command": "gemini", "model": "gemini-3.8-flash"}
+    "provider": "gemini",
+    "command": "gemini",
+    "model": "gemini-3.8-flash",
+    "fallback": {"provider": "claude", "command": "claude", "model": "sonnet"}
   },
   "gemini": {
-    "_comment": "옛 형식(자동 이전): llm 키가 없을 때만 읽혀 llm.provider=gemini로 옮겨집니다. 블록 초안의 다듬기(✨)는 이 키의 command·model을 계속 씁니다.",
+    "_comment": "gemini 키는 지금도 블록 초안 다듬기(✨)가 쓰는 설정입니다. llm 키가 없을 때는 이 값이 llm.provider=gemini의 씨앗이 되기도 합니다(옛 형식, 자동 이전).",
     "command": "gemini",
     "model": "gemini-3.8-flash"
   },
