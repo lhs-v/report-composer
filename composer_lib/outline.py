@@ -6,10 +6,13 @@ lines, captions, flows, a ledger excerpt). The rules here decide what starts on,
 from __future__ import annotations
 
 import hashlib
+import re
 
 from .library import short_project
 
 KINDS = ("summary", "project", "claim", "record", "flow", "ledger", "text")
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+LEDGER_LABEL = {"decision": "결정", "resolved": "닫힘", "open": "열림", "next": "다음"}
 
 
 def node_id(week: str, project: str | None, chapter: str | None, record: str | None, kind: str) -> str:
@@ -171,3 +174,104 @@ def _record_node(week: str, project: str, cid: str, r: dict, rnd: int, captions:
                  src={"week": week, "project": project, "chapter": cid, "record": rid}, marks=marks,
                  caption=caption, show=show, kind_label=str(r.get("kind") or ""), href=r.get("href"), representative=r.get("representative"),
                  files=[{"rel": f.get("rel"), "role": f.get("role"), "href": f.get("href"), "home": bool(f.get("home"))} for f in files])
+
+
+def _ref(n: dict) -> str | None:
+    s = n["src"]
+    return None if n["kind"] == "text" else ":".join([s.get("week") or "", s.get("project") or "", s.get("chapter") or "", s.get("record") or ""])
+
+
+def _kdate(iso: str) -> str:
+    m = re.fullmatch(r"\d{4}-(\d{2})-(\d{2})", iso or "")
+    return f"{int(m.group(1))}월 {int(m.group(2))}일" if m else iso
+
+
+def _own_blocks(n: dict, week: str) -> list[dict]:
+    """The blocks of one node, without its children."""
+    ref, out = _ref(n), []
+
+    def b(k: int, **kw) -> dict:
+        return {"id": f"b-{n['id'][2:]}-{k}", "source_ref": ref, **kw}
+    kind = n["kind"]
+    if kind == "summary":
+        out.append(b(0, type="callout", text=n["text"]))
+    elif kind == "project":
+        out.append(b(0, type="heading", level=2, text=n["title"]))
+        if n.get("text"):
+            out.append(b(1, type="paragraph", text=n["text"]))
+    elif kind == "claim":
+        out.append(b(0, type="heading", level=3, text=n["title"]))
+        if n.get("text"):
+            out.append(b(1, type="paragraph", text=n["text"]))
+    elif kind == "record":
+        caption = " — ".join(x for x in n.get("caption") or [] if x) or n["title"]
+        rep, href = n.get("representative"), n.get("href")
+        show = n.get("show") or "representative"
+        k = 0
+        img = rep if show == "representative" and rep else (href if href and href.lower().endswith(IMAGE_SUFFIXES) else None)
+        if show not in ("representative", "core"):                           # a chosen file
+            chosen = next((f for f in n.get("files") or [] if f.get("rel") == show and f.get("href")), None)
+            img, href = (chosen["href"] if chosen and chosen["href"].lower().endswith(IMAGE_SUFFIXES) else None), (chosen["href"] if chosen else href)
+        if img:
+            out.append(b(k, type="image", src=f"{week}/{img}", caption=caption)); k += 1
+        if href and href != img:
+            out.append(b(k, type="file", src=f"{week}/{href}", caption=caption if not img else n["title"])); k += 1
+        if not img and not href:
+            out.append(b(k, type="paragraph", text=f"{n['title']} (파일은 집에 있음) — {caption}"))
+    elif kind == "flow":
+        out.append(b(0, type="bullets", items=[f"{_kdate(i.get('when', ''))} · {i.get('text', '')}" for i in n.get("items") or []]))
+    elif kind == "ledger":
+        out.append(b(0, type="bullets", items=[f"{LEDGER_LABEL.get(i['kind'], i['kind'])}: {i['text']}" for i in n.get("items") or []]))
+    elif kind == "text":
+        lines = [l for l in (n.get("text") or "").split("\n") if l.strip()]
+        if lines and all(l.lstrip().startswith("- ") for l in lines):
+            out.append(b(0, type="bullets", items=[l.lstrip()[2:].strip() for l in lines]))
+        else:
+            out.append(b(0, type="paragraph", text=n.get("text") or ""))
+    return out
+
+
+def to_blocks(draft: dict) -> tuple[list[dict], list[dict]]:
+    nodes, week = draft["nodes"], draft.get("week") or ""
+    main: list[dict] = []
+    reference: list[dict] = []
+    pages: list[dict] = []
+
+    def first_sentence(text: str) -> str:
+        return re.split(r"(?<=[.!?。])\s", (text or "").strip(), maxsplit=1)[0]
+
+    def walk(nid: str, out: list[dict], in_reference: bool) -> None:
+        n = nodes.get(nid)
+        if not n or not n.get("on"):
+            return
+        if n.get("page") and not in_reference:
+            own: list[dict] = []
+            walk_page(n, own)
+            pages.append({"node": n["id"], "title": n["title"], "blocks": own})
+            out.append({"id": f"b-{n['id'][2:]}-stub", "type": "paragraph", "source_ref": _ref(n),
+                        "text": f"{n['title']} — {first_sentence(n.get('text'))} [[page:{n['id']}]]".replace(" —  [[", " [[")})
+            return
+        if n.get("folded") and not in_reference:
+            walk_into(n, reference, True)
+            return
+        walk_into(n, out, in_reference)
+
+    def walk_into(n: dict, out: list[dict], in_reference: bool) -> None:
+        out.extend(_own_blocks(n, week))
+        for c in n.get("children") or []:
+            walk(c, out, in_reference)
+
+    def walk_page(n: dict, out: list[dict]) -> None:
+        head = _own_blocks(n, week)
+        if head and head[0]["type"] == "heading":
+            head[0]["level"] = 2
+        out.extend(head)
+        for c in n.get("children") or []:
+            walk(c, out, False)
+
+    for rid in draft.get("root") or []:
+        walk(rid, main, False)
+    if reference:
+        main.append({"id": "b-reference-0", "type": "heading", "level": 2, "text": "참고", "source_ref": None})
+        main.extend(reference)
+    return main, pages

@@ -2,7 +2,7 @@
 import copy
 import unittest
 
-from composer_lib.outline import build_tree, node_id, rule_summary
+from composer_lib.outline import build_tree, node_id, rule_summary, to_blocks
 
 P = "C--Claude-sp-mobile"
 PKG = {
@@ -175,3 +175,65 @@ class EdgeRuleTests(unittest.TestCase):
         pkg["projects"][P]["ledger"] = {"decisions": [None, 3, "결정"], "resolved": [None], "open": [None, {"text": "열린"}], "next_steps": "x"}
         ledger, = _nodes_of(build_tree(pkg, "2026-W41"), "ledger")
         self.assertEqual([(i["kind"], i["text"]) for i in ledger["items"]], [("decision", "3"), ("decision", "결정"), ("open", "열린")])
+
+
+def tree_draft():
+    t = build_tree(PKG, "2026-W43")
+    return {"id": "d-1", "kind": "tree", "title": "주간 보고", "week": "2026-W43", "nodes": t["nodes"], "root": t["root"]}
+
+
+class ToBlocksTests(unittest.TestCase):
+    def test_order_follows_the_tree_and_off_nodes_are_absent(self):
+        d = tree_draft()
+        main, pages = to_blocks(d)
+        types = [(b["type"], b.get("level")) for b in main]
+        self.assertEqual(types[0], ("callout", None))                                   # summary
+        self.assertEqual(types[1], ("heading", 2))                                      # project
+        self.assertEqual(main[1]["text"], "sp-mobile")
+        self.assertEqual(types[2], ("paragraph", None))                                 # overview
+        self.assertEqual((main[3]["type"], main[3]["level"], main[3]["text"]), ("heading", 3, "비교 결론"))
+        texts = " ".join(b.get("text") or b.get("caption") or "" for b in main)
+        self.assertNotIn("지난 회차 그림", texts)                                       # R-old is off
+        self.assertNotIn("생략할 것", texts)
+        self.assertEqual(pages, [])
+
+    def test_a_record_becomes_image_and_file_with_the_caption_and_a_source_ref(self):
+        main, _ = to_blocks(tree_draft())
+        img = next(b for b in main if b["type"] == "image")
+        self.assertEqual(img["src"], "2026-W43/records/sp-mobile/R-new/preview-top.png")
+        self.assertEqual(img["caption"], "무엇 — 왜")
+        self.assertEqual(img["source_ref"], "2026-W43:C--Claude-sp-mobile:C-U-1:R-new")
+        f = next(b for b in main if b["type"] == "file")
+        self.assertEqual(f["src"], "2026-W43/records/sp-mobile/R-new/index.html")
+
+    def test_folded_subtrees_go_under_a_reference_heading_at_the_end(self):
+        main, _ = to_blocks(tree_draft())
+        heads = [b["text"] for b in main if b["type"] == "heading"]
+        self.assertEqual(heads[-2:], ["참고", "부록 조사"])                                # appendix claim is folded
+        flow = next(b for b in main if b["type"] == "bullets" and b["items"] and b["items"][0].startswith("10월 21일"))
+        self.assertEqual(flow["items"], ["10월 21일 · 첫 실험", "10월 23일 · 결론"])
+        self.assertGreater(main.index(flow), heads.index("참고"))                       # folded flow is reference material too
+
+    def test_a_page_node_leaves_a_stub_and_its_own_block_list(self):
+        d = tree_draft()
+        claim = next(n for n in d["nodes"].values() if n["kind"] == "claim" and n["src"]["chapter"] == "C-U-1")
+        claim["page"] = True
+        main, pages = to_blocks(d)
+        self.assertEqual(len(pages), 1)
+        self.assertEqual(pages[0]["title"], "비교 결론")
+        self.assertEqual(pages[0]["node"], claim["id"])
+        self.assertEqual(pages[0]["blocks"][0], {"id": f"b-{claim['id'][2:]}-0", "type": "heading", "level": 2, "text": "비교 결론", "source_ref": "2026-W43:C--Claude-sp-mobile:C-U-1:"})
+        stub = next(b for b in main if "[[page:" in (b.get("text") or ""))
+        self.assertEqual(stub["text"], f"비교 결론 — 리드. [[page:{claim['id']}]]")
+        self.assertFalse(any(b["type"] == "image" for b in main))                      # the record moved with the page
+
+    def test_text_node_and_ledger_render(self):
+        d = tree_draft()
+        pid = d["root"][1]
+        d["nodes"]["n-text1"] = {"id": "n-text1", "kind": "text", "title": "", "text": "- 하나\n- 둘", "on": True, "folded": False, "page": False, "stale": False,
+                                 "src": {"week": "2026-W43", "project": None, "chapter": None, "record": None}, "marks": ["noref"], "tier": "main", "children": []}
+        d["nodes"][pid]["children"].insert(0, "n-text1")
+        main, _ = to_blocks(d)
+        self.assertEqual(main[3], {"id": "b-text1-0", "type": "bullets", "items": ["하나", "둘"], "source_ref": None})
+        ledger = next(b for b in main if b["type"] == "bullets" and b["items"][0].startswith("결정:"))
+        self.assertEqual(ledger["items"], ["결정: 결정 하나", "열림: 열린 것"])
