@@ -78,12 +78,6 @@ class App:
         except (OSError, ValueError, AttributeError, TypeError) as e:
             raise OutlineError(f"outcomes.json을 읽지 못했습니다: {type(e).__name__}") from e
 
-    def blocks_of(self, draft: dict) -> list[dict]:
-        if draft.get("kind") == "tree":
-            from .outline import to_blocks
-            return to_blocks(draft)[0]
-        return draft.get("blocks") or []
-
     @staticmethod
     def used_ids(draft: dict) -> list[str]:
         """The records and chapters of every node that is on (an off node takes its subtree with it)."""

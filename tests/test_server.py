@@ -457,8 +457,17 @@ class ServerV3Tests(unittest.TestCase):
         code, pasted = self.req(f"/api/paste/{d['id']}", "POST", {})
         self.assertEqual(code, 200)
         self.assertNotIn("[[page:", pasted["html"])
-        self.assertIn("등급 체계 결론", pasted["html"])                                         # the child page's heading is in the clipboard document
-        self.assertIn("<hr", pasted["html"])
+
+    def test_paste_of_a_tree_is_one_document_with_the_child_pages_inline(self):
+        d, claim = self._page_draft()
+        rec = next(d["nodes"][c] for c in claim["children"] if d["nodes"][c]["kind"] == "record")
+        rec["caption"] = ["자식 페이지에만 있는 문장"]                                            # nowhere in the stub line of the parent body
+        self.assertEqual(self.req(f"/api/drafts/{d['id']}", "PUT", d)[0], 200)
+        code, pasted = self.req(f"/api/paste/{d['id']}", "POST", {})
+        self.assertEqual(code, 200)
+        self.assertIn("자식 페이지에만 있는 문장", pasted["html"])
+        self.assertEqual(pasted["html"].count("<hr"), 2)                                       # the instruction box + the divider before the child page
+        self.assertNotIn("[[page:", pasted["html"])
 
     def test_preview_of_a_tree_has_no_stub_text(self):
         d, claim = self._page_draft()
