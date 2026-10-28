@@ -23,7 +23,8 @@ def inline_md(text: str) -> str:
     s = _CODE.sub(lambda m: f"<code>{m.group(1)}</code>", s)
     s = _BOLD.sub(lambda m: f"<strong>{m.group(1)}</strong>", s)
     s = _ITALIC.sub(lambda m: f"<em>{m.group(1)}</em>", s)
-    s = _LINK.sub(lambda m: f'<a href="{m.group(2)}">{m.group(1)}</a>', s)
+    # the text is XML-escaped already, but escape() leaves `"` alone: it must not close the attribute
+    s = _LINK.sub(lambda m: '<a href="' + m.group(2).replace('"', "&quot;") + f'">{m.group(1)}</a>', s)
     return s
 
 

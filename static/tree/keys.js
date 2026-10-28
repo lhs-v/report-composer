@@ -121,8 +121,11 @@ window.Keys = (() => {
     if (!e) { toast(back ? "되돌릴 것이 없어요" : "다시 할 것이 없어요"); return; }
     tp = null; T().range = null;
     const before = order();
-    Tree.change(() => { (back ? e.inv : e.fwd).forEach(apply); if (N()[e.sel]) T().sel = e.sel; fixSel(before, null); });
+    const ops = back ? e.inv : e.fwd;
+    Tree.change(() => { ops.forEach(apply); if (N()[e.sel]) T().sel = e.sel; fixSel(before, null); });
     (back ? redo : undo).push(e);
+    // a caption the memory was already told about (typing sends it): tell it again what the text is now
+    for (const o of ops) if (o.type === "text" && o.field === "caption") window.NodePane?.remember?.(o.id);
   }
 
   // typing: edits within one second of each other are a single undo step

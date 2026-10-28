@@ -103,7 +103,7 @@ def paste_html(title: str, blocks: list[dict], weeks_dir: Path) -> tuple[str, li
     return doc, sorted(set(manual))
 
 
-def readme_text(title: str, manual: list[str]) -> str:
+def readme_text(title: str, manual: list[str], pages: list[str] | None = None) -> str:
     lines = [f"[{title}] Confluence에 올리는 법 (API 없이)", "",
              "1. 이 폴더의 paste.html 을 브라우저로 엽니다 (더블클릭).",
              "2. Ctrl+A 로 모두 선택하고 Ctrl+C 로 복사합니다.",
@@ -111,5 +111,8 @@ def readme_text(title: str, manual: list[str]) -> str:
              "4. 맨 위의 노란 안내 상자가 같이 붙었으면 지웁니다.", ""]
     if manual:
         lines += ["5. 아래 파일은 붙여넣기로 들어가지 않으니, 이 폴더에서 편집기로 끌어 넣거나 '첨부'로 올리세요:"] + [f"   - {m}" for m in manual] + [""]
+    if pages:
+        lines += [f"별도 페이지로 정한 내용은 paste.html에 들어 있지 않고 page-N.html 로 따로 저장됩니다 ({', '.join(pages)}). "
+                  "각각 Confluence에 자식 페이지를 만들어 같은 방법으로 붙여넣으세요.", ""]
     lines += ["body.html 은 Confluence 저장 형식(ac:image 등) 원문으로, API가 열리면 그대로 쓸 수 있습니다."]
     return "\n".join(lines) + "\n"

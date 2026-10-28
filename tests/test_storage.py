@@ -20,6 +20,12 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(inline_md("_i_ `x<y` [t](https://u?a=1&b=2)"),
                          '<em>i</em> <code>x&lt;y</code> <a href="https://u?a=1&amp;b=2">t</a>')
 
+    def test_a_link_address_cannot_break_out_of_its_attribute(self):
+        x = inline_md('[t](https://x"onmouseover="alert(1))')
+        self.assertNotIn('onmouseover="', x)
+        self.assertIn('href="https://x&quot;onmouseover=&quot;alert(1"', x)
+        self.assertIsNone(validate(render([{"id": "p", "type": "paragraph", "text": '[t](https://x"onmouseover="alert(1))'}])))
+
     def test_attachment_names_are_flat_and_unique_per_path(self):
         a = attachment_name("2026-W42/pages/alpha-01/preview.png")
         b = attachment_name("2026-W42/pages/alpha-02/preview.png")

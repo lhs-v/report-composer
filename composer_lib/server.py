@@ -166,10 +166,10 @@ class App:
             (folder / f"page-{n}.html").write_text(render(pg), encoding="utf-8")
         doc, manual = paste_html(draft.get("title") or "제목 없음", blocks, self.weeks_dir)
         (folder / "paste.html").write_text(doc, encoding="utf-8")
-        (folder / "읽어주세요.txt").write_text(readme_text(draft.get("title") or "제목 없음", manual), encoding="utf-8")
+        page_files = [f"page-{n}.html" for n in range(1, len(pages) + 1)]
+        (folder / "읽어주세요.txt").write_text(readme_text(draft.get("title") or "제목 없음", manual, page_files), encoding="utf-8")
         self.note_used(draft)
-        return {"folder": str(folder), "files": copied, "paste_html": str(folder / "paste.html"), "manual_files": manual,
-                "pages": [f"page-{n}.html" for n in range(1, len(pages) + 1)]}
+        return {"folder": str(folder), "files": copied, "paste_html": str(folder / "paste.html"), "manual_files": manual, "pages": page_files}
 
     def save_picked_image(self, week: str, data_uri: str, name: str = "") -> str:
         """Store an image picked out of a result page as a package-relative file so it can be attached later."""

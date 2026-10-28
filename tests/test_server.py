@@ -450,6 +450,9 @@ class ServerV3Tests(unittest.TestCase):
         self.assertNotIn("[[page:", (folder / "body.html").read_text(encoding="utf-8"))
         self.assertIn("등급 체계 결론", (folder / "page-1.html").read_text(encoding="utf-8"))
         self.assertFalse((folder / "page-2.html").exists())
+        readme = (folder / "읽어주세요.txt").read_text(encoding="utf-8")
+        self.assertIn("page-1.html", readme)                                              # the instructions say where the child pages went
+        self.assertEqual(res["pages"], ["page-1.html"])
         self.assertNotIn("[[page:", (folder / "paste.html").read_text(encoding="utf-8"))
         self.assertTrue(any(f.endswith("preview-top.png") for f in os.listdir(folder)))      # the child page's picture travelled too
         self.assertEqual(self.req("/api/memory")[1]["used"][R_FIG], [self.week])

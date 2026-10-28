@@ -96,6 +96,21 @@ window.NodePane = (() => {
       + (home.length ? `<details class="n-homefiles"><summary>집에 있는 파일 ${home.length}개 (여기서는 고를 수 없어요)</summary>${home.map(radio).join("")}</details>` : "");
   }
 
+  // ---- the caption the writer last settled on is what the memory keeps (next week's tree starts from it) ----
+  // Called after typing and after undo/redo (Keys): the memory must follow the visible text, not the last thing typed.
+  const memTimers = new Map();
+  function remember(id) {
+    clearTimeout(memTimers.get(id));
+    const m = node(id), rec = m?.src?.record, week = Tree.state.draft?.week;
+    if (!rec || !week) return;                                       // a text with no record has nothing to remember
+    const text = (m.caption || []).filter(Boolean);                  // both lines empty: [] tells the server to forget the fix
+    memTimers.set(id, setTimeout(() => {
+      memTimers.delete(id);
+      api("/api/memory/caption", { method: "PUT", body: { record: rec, text, week } })
+        .catch(e => window.Composer.toast("설명을 기억하지 못했습니다: " + esc(e.message), 6000));
+    }, 800));
+  }
+
   // ---- building one node's pane ----
   function shell() {
     const p = pane();
@@ -139,15 +154,10 @@ window.NodePane = (() => {
     els.page.addEventListener("click", () => Keys.togglePage(id));
 
     if (record) {
-      let timer = null;
       const onCap = () => {
         const text = els.caps.map(c => c.value.trim() ? c.value : "").filter(Boolean);
         Keys.typing(id, "caption", text);
-        clearTimeout(timer);
-        const m = node(id), rec = m?.src?.record, week = draft.week;
-        if (!rec) return;                                              // both lines empty: text is [], which tells the server to forget the fix
-        timer = setTimeout(() => api("/api/memory/caption", { method: "PUT", body: { record: rec, text, week } })
-          .catch(e => window.Composer.toast("설명을 기억하지 못했습니다: " + esc(e.message), 6000)), 800);
+        remember(id);
       };
       els.caps.forEach(c => c.addEventListener("input", onCap));
       els.opts.addEventListener("change", e => {
@@ -333,5 +343,5 @@ window.NodePane = (() => {
 
   fetch("/api/state").then(r => r.json()).then(s => { pageOrigin = s.page_origin || null; }).catch(() => {});
 
-  return { show };
+  return { show, remember };
 })();
