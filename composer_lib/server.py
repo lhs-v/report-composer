@@ -124,7 +124,7 @@ class App:
         res = {**client.fill_page(page_id, version, title, link_stubs(main, links), self.weeks_dir), "space": space, "parent_id": parent_id}
         draft["confluence"] = res
         self.drafts.save(draft)
-        self.memory.mark_used(self.used_ids(draft), draft.get("week") or "")
+        self.note_used(draft)
         return res
 
     def export_blocks(self, draft: dict) -> tuple[list[dict], list[list[dict]]]:
@@ -136,8 +136,8 @@ class App:
         return link_stubs(main, {}), [link_stubs(pg["blocks"], {}) for pg in pages]
 
     def note_used(self, draft: dict) -> None:
-        if draft.get("kind") == "tree":
-            self.memory.mark_used(self.used_ids(draft), draft.get("week") or "")
+        if draft.get("kind") == "tree" and draft.get("week"):
+            self.memory.mark_used(self.used_ids(draft), draft["week"])
 
     @staticmethod
     def week_updated(folder: Path) -> float:
@@ -194,7 +194,10 @@ class App:
         return f"{week}/picked/{fname}"
 
     def paste(self, draft: dict) -> dict:
-        doc, manual = paste_html(draft.get("title") or "제목 없음", self.export_blocks(draft)[0], self.weeks_dir)
+        main, pages = self.export_blocks(draft)
+        for n, pg in enumerate(pages, 1):                       # one clipboard document: the child pages follow the body, each after a divider
+            main = [*main, {"id": f"b-page-{n}-divider", "type": "divider", "source_ref": None}, *pg]
+        doc, manual = paste_html(draft.get("title") or "제목 없음", main, self.weeks_dir)
         self.note_used(draft)
         return {"html": doc, "manual_files": manual}
 
@@ -421,7 +424,7 @@ def make_handler(app: App):
                 except KeyError:
                     return self._json(404, {"error": "no such draft"})
             if p == "/api/preview":
-                blocks = app.blocks_of(body["draft"]) if isinstance(body.get("draft"), dict) else (body.get("blocks") or [])
+                blocks = app.export_blocks(body["draft"])[0] if isinstance(body.get("draft"), dict) else (body.get("blocks") or [])
                 xhtml = render(blocks)
                 return self._json(200, {"xhtml": xhtml, "error": validate(xhtml)})
             if p == "/api/polish":

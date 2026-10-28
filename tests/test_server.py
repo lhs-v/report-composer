@@ -457,6 +457,22 @@ class ServerV3Tests(unittest.TestCase):
         code, pasted = self.req(f"/api/paste/{d['id']}", "POST", {})
         self.assertEqual(code, 200)
         self.assertNotIn("[[page:", pasted["html"])
+        self.assertIn("등급 체계 결론", pasted["html"])                                         # the child page's heading is in the clipboard document
+        self.assertIn("<hr", pasted["html"])
+
+    def test_preview_of_a_tree_has_no_stub_text(self):
+        d, claim = self._page_draft()
+        code, pv = self.req("/api/preview", "POST", {"draft": d})
+        self.assertEqual(code, 200)
+        self.assertNotIn("[[page:", pv["xhtml"])
+        self.assertIn("등급 체계 결론", pv["xhtml"])                                             # the stub's own title and lead stay
+
+    def test_a_draft_without_a_week_records_no_use(self):
+        d, claim = self._page_draft()
+        d["week"] = ""
+        self.assertEqual(self.req(f"/api/drafts/{d['id']}", "PUT", d)[0], 200)
+        self.assertEqual(self.req(f"/api/paste/{d['id']}", "POST", {})[0], 200)
+        self.assertFalse(any("" in weeks for weeks in self.req("/api/memory")[1]["used"].values()))
 
 
 if __name__ == "__main__":
