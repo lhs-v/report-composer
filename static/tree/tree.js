@@ -26,7 +26,8 @@ window.Tree = (() => {
     let li = S.rows.get(n.id);
     if (!li) {
       li = document.createElement("li"); li.className = `t-row kind-${n.kind}`; li.dataset.id = n.id; li.setAttribute("role", "treeitem"); li.tabIndex = -1;
-      li.innerHTML = `<button type="button" class="t-check" aria-label="켜기/끄기" tabindex="-1"></button><span class="t-rail"></span><span class="t-title"></span><span class="t-marks"></span><span class="t-count"></span>`;
+      li.innerHTML = `<button type="button" class="t-check" aria-label="켜기/끄기" tabindex="-1"></button><span class="t-rail"></span><span class="t-title"></span><span class="t-marks"></span><span class="t-count"></span>`
+        + (n.kind === "project" ? `<span class="t-clear" role="img" aria-label="다듬을 것 없음" title="다듬을 것 없음">✓</span>` : "");
       li.querySelector(".t-check").addEventListener("click", e => { e.stopPropagation(); select(n.id); toggle(n.id); Keys.hint("toggle"); });
       li.querySelector(".t-title").draggable = true; // the handle for moving the row; drawer.js owns the drag events
       li.addEventListener("click", () => select(n.id));
@@ -41,8 +42,10 @@ window.Tree = (() => {
     li.tabIndex = S.sel === n.id ? 0 : -1; // roving tabindex: Tab from the page lands on the selected row
     li.setAttribute("aria-selected", String(S.sel === n.id));
     if (n.children?.length) li.setAttribute("aria-expanded", String(!n.folded)); else li.removeAttribute("aria-expanded");
+    const label = n.title || (n.text || "").split("\n")[0] || "(빈 글)";
     li.querySelector(".t-check").setAttribute("aria-pressed", String(!!n.on));
-    li.querySelector(".t-title").textContent = n.title || (n.text || "").split("\n")[0] || "(빈 글)";
+    li.querySelector(".t-check").setAttribute("aria-label", `${label} 켜기/끄기`);
+    li.querySelector(".t-title").textContent = label;
     const marks = marksOf(n).map(m => `<i class="chip m-${esc(m)}">${esc(MARK[m] || m)}</i>`).join("") + (n.page ? '<i class="chip m-page">별도 페이지</i>' : "");
     const mk = li.querySelector(".t-marks"); if (mk.dataset.sig !== marks) { mk.innerHTML = marks; mk.dataset.sig = marks; }
     li.querySelector(".t-count").textContent = n.children?.length || "";
@@ -73,6 +76,79 @@ window.Tree = (() => {
     m.setAttribute("aria-label", `진행 상황: 켬 ${on}, 끔 ${total - on}, 다듬을 것 ${stale}`);
     const chip = $("#treeStale");
     chip.textContent = stale ? `다듬을 것 ${stale}` : "다듬을 것 없음"; chip.classList.toggle("clear", !stale);
+    // all-clear per project: nothing in its subtree is stale or without a source. The check only fades in and out (opacity, see tree.css).
+    for (const [p] of walk()) {
+      if (p.kind !== "project") continue;
+      let clear = true;
+      for (const [n] of walk([p.id])) if (isStale(n)) { clear = false; break; }
+      S.rows.get(p.id)?.querySelector(".t-clear")?.classList.toggle("on", clear);
+    }
+  }
+
+  // ---- what the library says about this week: records still on their way, and the empty states ----
+  const data = () => window.ComposerData || {};
+  function paintHead() {
+    const chip = $("#treeRounds"), d = S.draft; if (!chip) return;
+    const entry = (data().library || []).find(w => w.week === d?.week);
+    const miss = entry?.missing || [];
+    chip.hidden = !miss.length;
+    chip.textContent = miss.length ? `기록 ${miss.length}개 아직 오는 중` : "";
+    chip.title = miss.slice(0, 8).map(m => `${m.project}: ${m.title}`).join("\n");
+    const none = !(data().weeks || []).length, note = $("#treeEmpty");
+    if (note) {
+      note.hidden = !none;
+      note.textContent = none ? `아직 받은 주차가 없습니다. 메일에서 받은 zip을 ${data().config?.inbox_dir || "받은편지함 폴더"} 에 넣으면 몇 초 안에 풀려서 여기에 트리가 생깁니다.` : "";
+    }
+    list().hidden = none && !Object.keys(nodes()).length;
+  }
+  document.addEventListener("composer:data", () => { if (S.draft) paintHead(); });
+
+  // ---- a round that arrives while the draft is open: only the nodes the draft does not have yet, switched off ----
+  let refreshing = false;
+  async function refresh() {
+    const draft = S.draft;
+    if (!draft || draft.kind !== "tree" || !draft.week || refreshing) return 0;
+    refreshing = true;
+    try {
+      let t;
+      try { t = await api(`/api/outline/${encodeURIComponent(draft.week)}`); } catch { return 0; } // a week that cannot be rebuilt just waits
+      if (draft !== S.draft || !t?.nodes) return 0;
+      const have = draft.nodes, merged = new Set(draft.merged || []);
+      const up = {};                                                   // new tree: node id -> its parent id
+      for (const [id, n] of Object.entries(t.nodes)) for (const c of n.children || []) up[c] = id;
+      const projectOf = id => { for (let p = up[id]; p; p = up[p]) if (t.nodes[p]?.kind === "project") return p; return null; };
+      const placed = new Set(Object.keys(have)), items = [];
+      const okUnder = (kind, p) => (Keys.childKinds[p ? (have[p] || t.nodes[p]).kind : ""] || []).includes(kind);
+      const visit = ids => {
+        for (const id of ids) {
+          const n = t.nodes[id]; if (!n) continue;
+          if (!placed.has(id) && !merged.has(id)) {
+            // same parent when the draft has it; else the project; else the end of the top level
+            const parent = [up[id] || null, projectOf(id), null].find(p => (p === null || placed.has(p)) && okUnder(n.kind, p));
+            if (parent !== undefined) {
+              items.push({ node: { ...n, on: false, marks: [...new Set([...(n.marks || []), "new"])] }, parent, index: null });
+              placed.add(id);
+            }
+          }
+          visit(n.children || []);
+        }
+      };
+      visit(t.root || []);
+      if (!items.length) return 0;
+      Keys.insertMany(items);
+      const added = items.filter(i => have[i.node.id]);
+      const records = added.filter(i => i.node.kind === "record").length;
+      if (records) toast(`새로 온 기록 ${records}개를 끈 채 넣었습니다`);
+      else if (added.length) toast(`새로 온 줄 ${added.length}개를 끈 채 넣었습니다`);
+      return added.length;
+    } finally { refreshing = false; }
+  }
+  // opening a draft that is older than its week folder: a round came while the composer was closed
+  async function refreshIfStale(draft) {
+    try {
+      const st = await api("/api/state"), w = (st.weeks || []).find(x => x.week === draft.week);
+      if (w && draft === S.draft && Date.parse(draft.updated || "") / 1000 < w.updated) await refresh();
+    } catch { /* offline or a week without outcomes: nothing to add */ }
   }
 
   // ---- saving: the whole draft, 600 ms after the last change ----
@@ -142,8 +218,9 @@ window.Tree = (() => {
     $(".t-head h2").textContent = draft.title || "초안 트리";
     list().replaceChildren();
     const first = draft.root?.[1] || draft.root?.[0] || null; // the first row after the summary: where the writing starts
-    render(); select(first); Keys.bind();
+    render(); select(first); Keys.bind(); paintHead();
+    refreshIfStale(draft);
   }
 
-  return { open, render, change, setDraft: change, toggle, fold, select, setFilter, flush, state: S, nodes, walk, markLabel: m => MARK[m] || m };
+  return { open, refresh, render, change, setDraft: change, toggle, fold, select, setFilter, flush, state: S, nodes, walk, markLabel: m => MARK[m] || m };
 })();

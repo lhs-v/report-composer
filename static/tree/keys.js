@@ -45,7 +45,9 @@ window.Keys = (() => {
         const keep = N()[o.keepId], gone = N()[o.goneId]; if (!keep || !gone) break;
         keep.text = [keep.text, gone.text].filter(Boolean).join("\n\n");
         keep.children.push(...gone.children); keep.stale = true;
-        const sib = siblings(parentOf(o.goneId)); sib.splice(sib.indexOf(o.goneId), 1); delete N()[o.goneId]; break;
+        const sib = siblings(parentOf(o.goneId)); sib.splice(sib.indexOf(o.goneId), 1); delete N()[o.goneId];
+        if (!(T().draft.merged ||= []).includes(o.goneId)) T().draft.merged.push(o.goneId); // remembered so a late round does not bring it back
+        break;
       }
       case "newText":
         N()[o.id] = { id: o.id, kind: "text", title: "", text: "", on: true, folded: false, page: false, stale: false,
@@ -53,7 +55,10 @@ window.Keys = (() => {
         siblings(o.parent).splice(o.index, 0, o.id); break;
       case "insertNode": N()[o.id] = clone(o.node); siblings(o.parent).splice(o.index, 0, o.id); break;
       case "removeNode": { const sib = siblings(o.parent), i = sib.indexOf(o.id); if (i >= 0) sib.splice(i, 1); delete N()[o.id]; break; }
-      case "restoreNode": N()[o.id] = clone(o.node); siblings(o.parent).splice(o.index, 0, o.id); break;
+      case "restoreNode":
+        N()[o.id] = clone(o.node); siblings(o.parent).splice(o.index, 0, o.id);
+        if (T().draft.merged) T().draft.merged = T().draft.merged.filter(x => x !== o.id);
+        break;
       case "restoreBody": if (n) { n.text = o.text; n.children = [...o.children]; n.stale = o.stale; } break;
     }
   }
@@ -86,7 +91,7 @@ window.Keys = (() => {
       }
       case "move": if (o.from.parent !== o.to.parent) { stale(o.from.parent); stale(o.to.parent); } reveal(o.to.parent); break;
       case "newText": reveal(o.parent); break;
-      case "insertNode": stale(o.parent); reveal(o.parent); break;
+      case "insertNode": if (!o.quiet) { stale(o.parent); reveal(o.parent); } break; // quiet: a late record joins without touching its claim
     }
     const fwd = [...pre, o];
     return { fwd, inv: fwd.slice().reverse().flatMap(invert), sel: o.keepId || o.id };
@@ -231,6 +236,29 @@ window.Keys = (() => {
     return n.id;
   }
 
+  // several nodes that arrived together (a late round) land in one change and one undo step; parents come before their children,
+  // index null = the end of the parent. The parent claim's "stale" and a folded host are left alone. Returns how many were placed.
+  function insertMany(items) {
+    const done = [], before = order();
+    Tree.change(() => {
+      for (const it of items) {
+        const node = clone(it.node);
+        if (!node.id || N()[node.id] || (it.parent && !N()[it.parent]) || !canLive(node.kind, it.parent)) continue;
+        node.children = [];
+        const sib = siblings(it.parent), index = it.index == null ? sib.length : Math.max(0, Math.min(it.index, sib.length));
+        const p = plan({ type: "insertNode", id: node.id, node, parent: it.parent, index, quiet: true });
+        p.fwd.forEach(apply); done.push(p);
+      }
+      fixSel(before, null);
+    });
+    if (!done.length) return 0;
+    tp = null; T().range = null;
+    undo.push({ fwd: done.flatMap(p => p.fwd), inv: done.slice().reverse().flatMap(p => p.inv), sel: done[0].sel });
+    if (undo.length > LIMIT) undo.shift();
+    redo.length = 0;
+    return done.length;
+  }
+
   function flashMs() { return parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--t-flash")) || 0; }
   // "줄 지우기": both rows flash together, then the lower one folds up into the upper one, then the op lands
   function merge(keep, gone) {
@@ -291,11 +319,24 @@ window.Keys = (() => {
 
   // ---- keyboard ----
   const helpDlg = () => document.getElementById("keysDlg");
+  // Tab inside the tree is depth (Tab / Shift+Tab move a row), so F6 is the way between the three columns: tree -> node pane -> drawer.
+  // Past the tree the DOM order is the Tab order (node pane inputs, then the drawer tabs).
+  function hop(dir) {
+    const root = document.getElementById("tree"), here = document.activeElement?.closest?.(".t-outline, .t-node, .t-drawer");
+    const at = here?.classList.contains("t-drawer") ? 2 : here?.classList.contains("t-node") ? 1 : 0;
+    const next = (at + dir + 3) % 3;
+    root.dataset.pane = ["tree", "node", "drawer"][next]; // narrow windows show one column at a time
+    const first = sel => [...root.querySelectorAll(sel)].find(el => el.offsetParent !== null); // a hidden button cannot take focus
+    const target = [() => T().rows.get(T().sel), () => first(".t-node .n-title, .t-node button, .t-node [contenteditable]"),
+                    () => root.querySelector('.t-drawer .d-tabs [aria-selected="true"]')][next]();
+    target?.focus();
+  }
   function onKey(e) {
     const S = T(); if (!S.draft || document.getElementById("tree").hidden || busy) return;
     if (document.querySelector("dialog[open]")) return;
     const k = e.key, code = e.code, ctrl = e.ctrlKey || e.metaKey, alt = e.altKey, shift = e.shiftKey;
     const editable = !!e.target.closest?.("input, textarea, select, [contenteditable]:not([contenteditable='false'])");
+    if (k === "F6" && !ctrl && !alt) { e.preventDefault(); hop(shift ? -1 : 1); return; }
     if (ctrl && code === "KeyS") { e.preventDefault(); Tree.flush(); return; }
     if (ctrl && k === "Enter") { e.preventDefault(); if (S.sel) newText(S.sel); return; }
     if (editable) return; // inside a text field the field's own keys win
@@ -332,6 +373,6 @@ window.Keys = (() => {
   }
   function reset() { undo = []; redo = []; tp = null; busy = false; } // a different draft: its history starts empty
 
-  return { op, type: typing, typing, move, indent, merge, split, newText, togglePage, hint, bind, reset, insert, landing, moveTo, parentOf,
+  return { op, type: typing, typing, move, indent, merge, split, newText, togglePage, hint, bind, reset, insert, insertMany, childKinds: CHILD_KINDS, landing, moveTo, parentOf,
            undo: () => step(true), redo: () => step(false) };
 })();

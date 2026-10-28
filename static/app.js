@@ -18,10 +18,16 @@
     drafts: [], draft: null, history: [], future: [], saveTimer: null, tab: "edit", weeksInfo: null };
 
   // ---------- data ----------
+  // what the tree editor (separate scripts) needs to know: the library's week entries, the week folders, the config
+  function publishData() {
+    window.ComposerData = { library: state.library, weeks: state.weeksInfo?.weeks || [], config: state.weeksInfo?.config || {} };
+    document.dispatchEvent(new CustomEvent("composer:data"));
+  }
   async function loadAll() {
     const [st, lib, drafts] = await Promise.all([api("/api/state"), api("/api/library"), api("/api/drafts")]);
     state.pageOrigin = st.page_origin;
     state.weeksInfo = st; state.library = lib; state.drafts = drafts;
+    publishData();
     renderInbox(st);
     if (!state.week && lib.length) state.week = lib[0].week;
     renderWeeks(); renderLibrary();
@@ -765,8 +771,16 @@
   });
 
   // inbox polling: pick up weeks that arrive while the page is open
+  // a week counts as changed when its folder's `updated` moves (a late round rewrites outcomes.json), not only when a week appears
+  const weekSig = ws => (ws || []).map(w => w.week + ":" + w.updated).join("|");
   setInterval(async () => { try { const st = await api("/api/state"); renderInbox(st);
-    if (st.weeks.length !== state.weeksInfo?.weeks.length) { state.library = await api("/api/library"); state.weeksInfo = st; if (!state.week && state.library.length) state.week = state.library[0].week; renderWeeks(); renderLibrary(); } } catch {} }, 5000);
+    const prev = state.weeksInfo?.weeks || [];
+    if (weekSig(st.weeks) !== weekSig(prev)) {
+      const before = new Map(prev.map(w => [w.week, w.updated]));
+      state.library = await api("/api/library"); state.weeksInfo = st; if (!state.week && state.library.length) state.week = state.library[0].week; renderWeeks(); renderLibrary(); publishData();
+      const wk = state.draft?.week;     // the open tree draft's week changed: let the tree pick up what is new
+      if (state.draft?.kind === "tree" && wk && st.weeks.some(w => w.week === wk && before.get(wk) !== w.updated)) window.Tree?.refresh?.();
+    } } catch {} }, 5000);
 
   loadAll().catch(e => toast("초기화 실패: " + esc(e.message), 10000));
 })();

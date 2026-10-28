@@ -130,6 +130,7 @@
       <h2 id="treeTitle">초안 트리</h2>
       <span class="chip" id="treeWeek"></span>
       <span class="chip" id="treeStale"></span>
+      <span class="chip" id="treeRounds" hidden></span>
       <button type="button" class="chip t-keysbtn" id="keysBtn" aria-label="단축키 표 열기" title="단축키 (?)">?</button>
       <div class="t-meter" aria-label="진행 상황"></div>
       <div class="t-filters" role="group" aria-label="보기 필터">
@@ -139,6 +140,7 @@
         <button type="button" class="chip" data-filter="stale" aria-pressed="false">다듬을 것</button>
       </div>
     </div>
+    <p id="treeEmpty" class="t-empty" role="status" hidden></p>
     <ul role="tree" id="treeList" aria-label="보고서 트리"></ul>
   </aside>
   <section class="t-node" id="nodePane" aria-label="노드 편집"></section>
@@ -193,6 +195,7 @@
         <tr><th><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> · <kbd>Ctrl</kbd>+<kbd>Y</kbd></th><td>다시 하기</td></tr>
         <tr><th><kbd>Ctrl</kbd>+<kbd>S</kbd></th><td>지금 저장</td></tr>
         <tr><th><kbd>Esc</kbd></th><td>고른 짝 풀기, 한 번 더 누르면 트리에서 나가기</td></tr>
+        <tr><th><kbd>F6</kbd> <kbd>Shift</kbd>+<kbd>F6</kbd></th><td>트리 → 노드 칸 → 서랍 사이 옮기기 (노드 칸에서는 Tab이 서랍으로 이어져요)</td></tr>
         <tr><th><kbd>?</kbd></th><td>이 표 열기</td></tr>
       </tbody>
     </table>
