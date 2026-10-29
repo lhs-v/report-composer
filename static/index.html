@@ -153,13 +153,13 @@
   </section>
 </main>
 
-<main id="tree" class="tree" data-pane="tree" hidden>
+<main id="tree" class="tree" data-pane="tree" data-outline="on" data-insp="on" hidden>
   <nav class="t-tabs" aria-label="화면 전환">
-    <button type="button" data-pane="tree">트리</button>
-    <button type="button" data-pane="node">노드</button>
-    <button type="button" data-pane="drawer">서랍</button>
+    <button type="button" data-pane="tree">개요</button>
+    <button type="button" data-pane="node">문서</button>
+    <button type="button" data-pane="drawer">속성</button>
   </nav>
-  <aside class="t-outline" aria-label="아웃라인">
+  <aside class="t-outline" aria-label="개요">
     <div class="t-head">
       <h2 id="treeTitle">초안 트리</h2>
       <span class="chip" id="treeWeek"></span>
@@ -173,18 +173,23 @@
         <button type="button" class="chip" data-filter="new" aria-pressed="false">새로 온 것만</button>
         <button type="button" class="chip" data-filter="stale" aria-pressed="false">다듬을 것</button>
       </div>
+      <button type="button" class="chip" data-toggle-pane="outline" aria-pressed="true" title="개요 열고 닫기 (Ctrl+Shift+\)">개요</button>
+      <button type="button" class="chip" data-toggle-pane="insp" aria-pressed="true" title="속성 열고 닫기 (Ctrl+\)">속성</button>
     </div>
     <p id="treeEmpty" class="t-empty" role="status" hidden></p>
     <ul role="tree" id="treeList" aria-label="보고서 트리"></ul>
   </aside>
-  <section class="t-node" id="nodePane" aria-label="노드 편집"></section>
-  <aside class="t-drawer" id="drawer" aria-label="서랍">
-    <div class="d-tabs" role="tablist">
-      <button type="button" role="tab" data-drawer="evidence" aria-selected="true">근거</button>
-      <button type="button" role="tab" data-drawer="weeks" aria-selected="false">다른 주</button>
-      <button type="button" role="tab" data-drawer="picked" aria-selected="false">집은 그림</button>
+  <section class="t-node" id="nodePane" aria-label="문서"></section>
+  <aside class="t-inspector" id="inspector" aria-label="속성">
+    <div class="i-props" aria-label="고른 줄"></div>
+    <div id="drawer" class="t-drawer" aria-label="참고">
+      <div class="d-tabs" role="tablist">
+        <button type="button" role="tab" data-drawer="evidence" aria-selected="true">근거</button>
+        <button type="button" role="tab" data-drawer="weeks" aria-selected="false">다른 주</button>
+        <button type="button" role="tab" data-drawer="picked" aria-selected="false">집은 그림</button>
+      </div>
+      <div class="d-body"></div>
     </div>
-    <div class="d-body"></div>
   </aside>
 </main>
 
@@ -242,6 +247,7 @@
 <script src="/static/tree/keys.js"></script>
 <script src="/static/tree/nodeinfo.js"></script>
 <script src="/static/tree/node.js"></script>
+<script src="/static/tree/inspector.js"></script>
 <script src="/static/tree/aids.js"></script>
 <script src="/static/tree/drawer.js"></script>
 <script src="/static/tree/tree.js"></script>

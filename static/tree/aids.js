@@ -26,7 +26,7 @@ window.Aids = (() => {
     const b = $("llmBtn");
     if (b) b.title = S.ready ? `글쓰기 보조: ${S.llm?.provider || ""}${S.llm?.model ? ":" + S.llm.model : ""} (눌러서 바꿉니다)` : TIP;
     const sel = window.Tree?.state?.sel;
-    if (window.Tree?.state?.draft && sel) window.NodePane?.show?.(sel);     // enable / disable the buttons on screen
+    if (window.Tree?.state?.draft && sel) window.NodePane?.show?.(sel), window.Inspector?.show?.(sel);     // enable / disable the buttons on screen
     return S.ready;
   }
   // a tree draft opened: another draft's jobs are forgotten, the same draft's keep running
@@ -47,7 +47,7 @@ window.Aids = (() => {
   // full: the buttons around the box change too (a job started or ended); otherwise only the seconds tick
   function paint(nodeId, full) {
     if (window.Tree?.state?.sel !== nodeId) return;
-    if (full) window.NodePane?.show?.(nodeId);
+    if (full) { window.NodePane?.show?.(nodeId); window.Inspector?.show?.(nodeId); }
     else { const box = boxFor(nodeId); if (box) render(nodeId, box); }
   }
   function fail(job, why) {

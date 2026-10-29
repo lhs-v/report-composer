@@ -348,13 +348,13 @@ window.Keys = (() => {
   // Tab inside the tree is depth (Tab / Shift+Tab move a row), so F6 is the way between the three columns: tree -> node pane -> drawer.
   // Past the tree the DOM order is the Tab order (node pane inputs, then the drawer tabs).
   function hop(dir) {
-    const root = document.getElementById("tree"), here = document.activeElement?.closest?.(".t-outline, .t-node, .t-drawer");
-    const at = here?.classList.contains("t-drawer") ? 2 : here?.classList.contains("t-node") ? 1 : 0;
+    const root = document.getElementById("tree"), here = document.activeElement?.closest?.(".t-outline, .t-node, .t-inspector");
+    const at = here?.classList.contains("t-inspector") ? 2 : here?.classList.contains("t-node") ? 1 : 0;
     const next = (at + dir + 3) % 3;
     root.dataset.pane = ["tree", "node", "drawer"][next]; // narrow windows show one column at a time
     const first = sel => [...root.querySelectorAll(sel)].find(el => el.offsetParent !== null); // a hidden button cannot take focus
     const target = [() => T().rows.get(T().sel), () => first(".t-node .n-title, .t-node button, .t-node [contenteditable]"),
-                    () => root.querySelector('.t-drawer .d-tabs [aria-selected="true"]')][next]();
+                    () => root.querySelector('.t-inspector .i-states button:not([hidden]), .t-inspector .d-tabs [aria-selected="true"]')][next]();
     target?.focus();
   }
   function onKey(e) {
@@ -364,6 +364,7 @@ window.Keys = (() => {
     const editable = !!e.target.closest?.("input, textarea, select, [contenteditable]:not([contenteditable='false'])");
     if (k === "F6" && !ctrl && !alt) { e.preventDefault(); hop(shift ? -1 : 1); return; }
     if (ctrl && code === "KeyS") { e.preventDefault(); Tree.flush(); return; }
+    if (ctrl && !alt && code === "Backslash") { e.preventDefault(); if (shift) window.Inspector?.setOutline(); else window.Inspector?.toggle(); return; }
     if (ctrl && k === "Enter") { e.preventDefault(); if (S.sel) newText(S.sel); return; }
     if (editable) return; // inside a text field the field's own keys win
     if (ctrl && !alt && code === "KeyZ") { e.preventDefault(); step(!shift); return; }

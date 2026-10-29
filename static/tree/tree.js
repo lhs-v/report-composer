@@ -190,7 +190,7 @@ window.Tree = (() => {
     const ae = document.activeElement, keep = !ae || ae === document.body || list().contains(ae);
     mutate(); S.draft.updated = new Date().toISOString(); S.rev++; render();
     if (keep) S.rows.get(S.sel)?.focus();
-    window.NodePane?.show?.(S.sel);
+    window.NodePane?.show?.(S.sel); window.Inspector?.show?.(S.sel);
     clearTimeout(S.saveTimer); saveState("저장 중…");
     const draft = S.draft, rev = S.rev;
     S.saveTimer = setTimeout(() => save(draft, rev), 600);
@@ -206,7 +206,8 @@ window.Tree = (() => {
     Keys.op({ type: "fold", id, from: n.folded, to: !n.folded });
   }
   // range: [upper, lower] when two sibling rows are picked with Shift+↑↓ (to merge them); otherwise none
-  function select(id, range = null) {
+  // opts.focus: false leaves the keyboard where it is (the document selects rows while you type); opts.scroll: false keeps the document still
+  function select(id, range = null, opts = {}) {
     if (!id || !nodes()[id]) return;
     if (id === S.sel && !range && !S.range) return;
     S.sel = id; S.range = range;
@@ -214,8 +215,8 @@ window.Tree = (() => {
       li.classList.toggle("sel", k === id); li.setAttribute("aria-selected", String(k === id));
       li.classList.toggle("range", !!range?.includes(k)); li.tabIndex = k === id ? 0 : -1;
     }
-    S.rows.get(id)?.focus({ preventScroll: false });
-    window.NodePane?.show?.(id); window.Drawer?.show?.(id);
+    if (opts.focus !== false) S.rows.get(id)?.focus({ preventScroll: false });
+    window.NodePane?.show?.(id); window.Inspector?.show?.(id); window.Drawer?.show?.(id);
   }
   function setFilter(f) {
     S.filter = f;
@@ -232,6 +233,7 @@ window.Tree = (() => {
     $(".t-head h2").textContent = draft.title || "초안 트리";
     list().replaceChildren();
     const first = draft.root?.[1] || draft.root?.[0] || null; // the first row after the summary: where the writing starts
+    window.Inspector?.open?.(draft);
     render(); select(first); Keys.bind(); paintHead();
     refreshIfStale(draft);
   }

@@ -27,6 +27,9 @@
     window.Tree?.open?.(draft);
   }
 
+  // the two pane toggles (the outline and the inspector); Ctrl+\ / Ctrl+Shift+\ do the same from the keyboard (keys.js)
+  $$("[data-toggle-pane]").forEach(b => b.addEventListener("click", () => { b.dataset.togglePane === "outline" ? window.Inspector?.setOutline() : window.Inspector?.toggle(); }));
+
   // narrow windows: the three columns become tabs
   $$("#tree .t-tabs button").forEach(b => b.addEventListener("click", () => { $("#tree").dataset.pane = b.dataset.pane; }));
 
