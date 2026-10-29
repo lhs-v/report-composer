@@ -32,10 +32,35 @@
     if (!state.week && lib.length) state.week = lib[0].week;
     renderWeeks(); renderLibrary();
     if (!state.draft) {
-      if (drafts.length) await openDraft(drafts[0].id);
-      else await newDraft(defaultTitle());
+      // the newest week's tree draft is the front door: open it, or make it once; the newest draft of any kind is the fallback
+      const opened = await openWeekTree(st, drafts);
+      if (!opened) {
+        if (drafts.length) await openDraft(drafts[0].id);
+        else await newDraft(defaultTitle());
+      }
     }
     renderDraftSelect();
+  }
+  const autoKey = week => `tree-auto:${week}`;
+  const autoMark = (week, v) => { try { localStorage.setItem(autoKey(week), v); } catch { /* private window */ } };
+  const autoMarked = week => { try { return localStorage.getItem(autoKey(week)); } catch { return null; } };
+  async function openWeekTree(st, drafts) {
+    const week = st.weeks?.[0]?.week;
+    if (!week) return false;
+    const mine = drafts.find(d => d.kind === "tree" && d.week === week);      // newest-first, so the latest tree of that week
+    if (mine) { await openDraft(mine.id); return true; }
+    if (autoMarked(week)) return false;                                        // made once already (and deleted on purpose): stay out of the way
+    try {
+      const d = await api("/api/drafts/tree", { method: "POST", body: { title: `주간 보고 ${week}`, week } });
+      autoMark(week, "made");
+      await refreshDrafts(); await openDraft(d.id);
+      toast(`이번 주 패키지로 초안 트리를 만들었습니다 (${esc(week)}). 지우면 다시 만들지 않습니다.`, 6000);
+      return true;
+    } catch (e) {
+      autoMark(week, "failed");                                                // no retry loop on every launch; ＋ 이번 주 초안 still works
+      toast("이번 주 초안 트리를 만들지 못했습니다: " + esc(e.message) + " — 위쪽 ＋ 이번 주 초안으로 다시 시도할 수 있습니다.", 8000);
+      return false;
+    }
   }
   const defaultTitle = () => { const w = state.library[0]; return w ? `주간 성과 ${w.week} (${w.since ?? ""}~${w.until ?? ""})` : "새 페이지"; };
 
@@ -778,7 +803,11 @@
   $("#draftSelect").onchange = e => openDraft(e.target.value);
   $("#newDraft").onclick = () => newDraft(prompt("새 초안 제목", defaultTitle()) || defaultTitle());
   $("#dupDraft").onclick = async () => { const d = await api(`/api/drafts/${state.draft.id}/duplicate`, { method: "POST", body: {} }); await refreshDrafts(); await openDraft(d.id); };
-  $("#delDraft").onclick = async () => { if (!confirm(`'${state.draft.title}' 초안을 삭제할까요?`)) return; await api(`/api/drafts/${state.draft.id}`, { method: "DELETE" }); state.draft = null; await refreshDrafts(); await loadAll(); };
+  $("#delDraft").onclick = async () => {
+    if (!confirm(`'${state.draft.title}' 초안을 삭제할까요?`)) return;
+    if (state.draft.kind === "tree" && state.draft.week) autoMark(state.draft.week, "deleted");   // a tree the writer removed is not rebuilt at the next launch
+    await api(`/api/drafts/${state.draft.id}`, { method: "DELETE" }); state.draft = null; await refreshDrafts(); await loadAll();
+  };
   $("#draftTitle").oninput = () => {
     if (state.draft?.kind !== "tree") return scheduleSaveSoft();
     // a tree is saved by the tree editor (one autosave, the same "저장 중…" state); the heading over the outline follows
