@@ -188,6 +188,7 @@ window.Keys = (() => {
 
   function newText(after) {
     const a = N()[after]; if (!a) return null;
+    if (document.getElementById("tree").dataset.mode === "check") window.Doc?.setMode("edit"); // the new text must be visible and focusable
     // under a project the new text is its first child; otherwise it is the next sibling of the selected row
     const parent = a.kind === "project" ? after : parentOf(after);
     const index = a.kind === "project" ? 0 : siblings(parent).indexOf(after) + 1;
@@ -355,7 +356,7 @@ window.Keys = (() => {
     if (next === 2 && !window.Inspector?.isOpen?.()) window.Inspector?.toggle?.(true); // a hidden inspector opens: F6 is a way into it
     const first = sel => [...root.querySelectorAll(sel)].find(el => el.offsetParent !== null); // a hidden button cannot take focus
     // the selected node's body or title first, then any field of the document
-    const inDoc = () => [".t-doc .sel .n-body", ".t-doc .sel .doc-title", ".t-doc .sel input, .t-doc .sel textarea", ".t-doc .doc-node input, .t-doc .doc-node textarea, .t-doc .doc-node [contenteditable]"].reduce((f, s) => f || first(s), null);
+    const inDoc = () => [".t-doc .sel .n-body", ".t-doc .sel .doc-title", ".t-doc .sel input, .t-doc .sel textarea", ".t-doc .doc-node input, .t-doc .doc-node textarea, .t-doc .doc-node [contenteditable]", "#docCheck:not([hidden])"].reduce((f, s) => f || first(s), null);
     const target = [() => T().rows.get(T().sel), inDoc,
                     () => root.querySelector('.t-inspector .i-states button:not([hidden]), .t-inspector .d-tabs [aria-selected="true"]')][next]();
     target?.focus();

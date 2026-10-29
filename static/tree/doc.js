@@ -352,7 +352,7 @@ window.Doc = (() => {
   }
 
   function open(draft) {
-    if (draft !== curDraft) { videos.forEach(v => v.pause()); videos.clear(); curDraft = draft; checkKey = null; setMode("edit"); }
+    if (draft !== curDraft) { videos.forEach(v => v.pause()); videos.clear(); curDraft = draft; checkKey = null; checkEl()?.querySelector(".doc-checkbody")?.replaceChildren(); setMode("edit"); }
     els.clear(); host()?.replaceChildren();
     const p = pane(); if (p) p.scrollTop = 0;
     update();
@@ -385,12 +385,14 @@ window.Doc = (() => {
 
   // The export is Confluence storage XHTML, which a browser does not draw (ac:image, CDATA links): give the attachments their real
   // files here, and keep the rest as the browser's plain reading of it. The 내보내기 점검 view paints with it.
+  // the attachment name the server gives a file: storage.attachment_name of "<week>/<href>" (flat, ASCII-safe, `_` for everything else)
+  const attName = src => src.replace(/\\/g, "/").replace(/\//g, "_").replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "file";
   function display(xhtml) {
     const urls = new Map();
     for (const [m] of Tree.walk()) {
-      const week = m.src?.week || Tree.state.draft.week;              // the server names an attachment `${week}_${href with "/" as "_"}`
+      const week = m.src?.week || Tree.state.draft.week;
       for (const href of [m.href, m.representative, ...(m.files || []).map(f => f.href)]) {
-        if (href) urls.set(`${week}_${href.replace(/\//g, "_")}`, `/files/${week}/${I().enc(href)}`);
+        if (href) urls.set(attName(`${week}/${href}`), `/files/${week}/${I().enc(href)}`);
       }
     }
     return xhtml
@@ -420,6 +422,7 @@ window.Doc = (() => {
       if (seq !== checkSeq || mode !== "check") return;
       if (r?.error) { state.textContent = "미리보기를 만들지 못했어요: " + r.error; return; }
       view.innerHTML = r?.xhtml ? display(r.xhtml) : "";            // the server renders our own blocks to XHTML (text escaped there)
+      view.querySelectorAll("a").forEach(a => { a.target = "_blank"; a.rel = "noopener"; });
       state.textContent = r?.xhtml ? "" : "내보낼 내용이 아직 없어요. 개요에서 줄을 켜 보세요.";
       checkKey = key;
     } catch (e) {
