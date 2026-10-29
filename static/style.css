@@ -5,8 +5,9 @@
   --warn:var(--mark); --err:#b3261e;
   font-family: var(--font-body);
 }
+:root[data-theme="dark"] { --err:#ef7b74; }
 @media (prefers-color-scheme: dark) {
-  :root { --err:#ef7b74; }
+  :root:not([data-theme="light"]) { --err:#ef7b74; }
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -218,6 +219,8 @@ button.accent { background: var(--accent); color: #fff; border-color: var(--acce
 #polishDlg select { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 4px 6px; }
 
 /* the dark accent is light: white text on it would not read (kept last so it wins over the rules above) */
+:root[data-theme="dark"] button.primary, :root[data-theme="dark"] button.accent, :root[data-theme="dark"] .selAdd { color:#1b1915; }
 @media (prefers-color-scheme: dark) {
-  button.primary, button.accent, .selAdd { color:#1b1915; }
+  :root:not([data-theme="light"]) button.primary, :root:not([data-theme="light"]) button.accent, :root:not([data-theme="light"]) .selAdd { color:#1b1915; }
 }
+.dlg h4 { margin: 14px 0 2px; font-size: 13px; font-weight: 600; color: var(--sub); }

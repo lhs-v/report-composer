@@ -21,8 +21,23 @@
   --t-flash: 120ms;
 }
 
+/* Dark palette. The system setting decides unless the writer fixed a theme in ⚙ 설정 (html[data-theme="light"|"dark"]);
+   the two blocks are the same values on purpose — CSS cannot share a rule between a selector and a media query. */
+:root { color-scheme: light; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1b1915;
+  --surface: #23201b;
+  --fg: #ebe5da;
+  --muted: #a39b8d;
+  --line: #37322a;
+  --accent: #9ab8d6;
+  --accent-soft: #2a3542;
+  --mark: #d9906b;
+}
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #1b1915;
     --surface: #23201b;
     --fg: #ebe5da;

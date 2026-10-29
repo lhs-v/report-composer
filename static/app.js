@@ -117,6 +117,18 @@
     return `<div class="lib-block ${used ? "used" : ""} ${b.optional ? "optional" : ""}"${opt} draggable="${b.type !== "page"}" data-id="${esc(b.id)}"><span class="icon">${icon(b)}</span><div class="body">${body}</div>${action}</div>`;
   }
   const openStreams = new Set();   // which stream <details> the user has expanded; survives re-renders
+  // 화면 모드: 시스템을 따르거나(기본) 한쪽으로 고정. 바로 적용되고 이 브라우저에 남는다; head의 한 줄 스크립트가 첫 그림 전에 같은 값을 읽는다
+  const applyTheme = v => { if (v === "light" || v === "dark") document.documentElement.dataset.theme = v; else delete document.documentElement.dataset.theme; };
+  const themeSel = $("#themeSel");
+  if (themeSel) {
+    let cur = "system"; try { cur = localStorage.getItem("cp.theme") || "system"; } catch {}
+    themeSel.value = cur;
+    themeSel.onchange = () => {
+      const v = themeSel.value;
+      try { if (v === "system") localStorage.removeItem("cp.theme"); else localStorage.setItem("cp.theme", v); } catch {}
+      applyTheme(v);
+    };
+  }
   const folds = new Set(JSON.parse(localStorage.getItem("cp.folds") || "[]"));   // collapsed projects/streams, remembered
   const saveFolds = () => { try { localStorage.setItem("cp.folds", JSON.stringify([...folds])); } catch {} };
   const foldable = (key, cls, summary, body) => `<details class="${cls}" data-fold="${esc(key)}" ${folds.has(key) ? "" : "open"}><summary>${summary}</summary>${body}</details>`;
