@@ -97,8 +97,15 @@ button.chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--
 
 /* document column */
 .t-doc { padding: 0 0 50vh; background: var(--surface); }
-.doc-head { position: sticky; top: 0; z-index: 1; display: flex; justify-content: flex-end; gap: 6px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.doc-head { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
 .doc-tools { display: flex; gap: 6px; }
+.doc-mode { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.doc-mode button { border: 0; border-radius: 0; font-size: 13px; padding: 2px 12px; background: transparent; color: var(--muted); }
+.doc-mode button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.doc[hidden] { display: none; }
+.doc-check .n-pstate { margin: 0 0 8px; min-height: 1.4em; }
+.doc-checkbody { font-size: 14px; line-height: 1.6; }
+.doc-checkbody.busy { opacity: .45; }
 .doc { max-width: 76ch; margin: 0 auto; padding: 24px 40px; }
 .doc-node { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 0 8px; margin: 0 0 18px -36px; padding: 4px 0; border-left: 3px solid transparent; border-radius: 4px; scroll-margin-top: 56px; }
 .doc-node:focus { outline: none; }
@@ -118,7 +125,7 @@ button.chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--
 .doc .n-body { min-height: 1.7em; padding: 4px 8px; margin: 0 -8px; }
 .kind-summary .doc-main { padding: 12px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
 .doc-caps { display: flex; flex-direction: column; gap: 2px; }
-.doc-caps .n-cap { border: 0; border-bottom: 1px solid transparent; border-radius: 0; background: transparent; padding: 2px 0; font-size: 13px; color: var(--muted); }
+.doc-caps .n-cap { display: block; resize: none; overflow: hidden; font-family: inherit; line-height: 1.5; border: 0; border-bottom: 1px solid transparent; border-radius: 0; background: transparent; padding: 2px 0; font-size: 13px; color: var(--muted); }
 .doc-caps .n-cap:first-child { color: var(--fg); }
 .doc-caps .n-cap:hover { border-bottom-color: var(--line); } .doc-caps .n-cap:focus { border-bottom-color: var(--accent); }
 .doc-node.stub { margin-bottom: 8px; }

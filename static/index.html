@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="composer-static" content="1.1.1">
+<meta name="composer-static" content="1.2.0">
 <title>Report Composer</title>
 <script>try{var t=localStorage.getItem("cp.theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
 <link rel="stylesheet" href="/static/tokens.css">
@@ -179,12 +179,20 @@
   </aside>
   <section class="t-doc" id="docPane" aria-label="문서">
     <div class="doc-head">
+      <div class="doc-mode" role="group" aria-label="보기">
+        <button type="button" data-mode="edit" aria-pressed="true" title="고치는 화면">편집</button>
+        <button type="button" data-mode="check" aria-pressed="false" title="내보내면 이렇게 보여요 (돌아오기: Esc)">내보내기 점검</button>
+      </div>
       <div class="doc-tools">
         <button type="button" class="chip" data-toggle-pane="outline" aria-pressed="true" title="개요 열고 닫기 (Ctrl+Shift+\)">개요</button>
         <button type="button" class="chip" data-toggle-pane="insp" aria-pressed="true" title="속성 열고 닫기 (Ctrl+\)">속성</button>
       </div>
     </div>
     <div class="doc" id="doc"></div>
+    <div class="doc doc-check" id="docCheck" aria-label="내보내기 점검" hidden>
+      <p class="n-pstate muted small" role="status" aria-live="polite"></p>
+      <div class="doc-checkbody n-preview"></div>
+    </div>
   </section>
   <aside class="t-inspector" id="inspector" aria-label="속성">
     <div class="i-props" aria-label="고른 줄"></div>
@@ -239,8 +247,10 @@
         <tr><th><kbd>Ctrl</kbd>+<kbd>Z</kbd></th><td>되돌리기</td></tr>
         <tr><th><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> · <kbd>Ctrl</kbd>+<kbd>Y</kbd></th><td>다시 하기</td></tr>
         <tr><th><kbd>Ctrl</kbd>+<kbd>S</kbd></th><td>지금 저장</td></tr>
-        <tr><th><kbd>Esc</kbd></th><td>고른 짝 풀기, 한 번 더 누르면 트리에서 나가기</td></tr>
-        <tr><th><kbd>F6</kbd> <kbd>Shift</kbd>+<kbd>F6</kbd></th><td>트리 → 노드 칸 → 서랍 사이 옮기기 (노드 칸에서는 Tab이 서랍으로 이어져요)</td></tr>
+        <tr><th><kbd>Esc</kbd></th><td>고른 짝 풀기, 한 번 더 누르면 트리에서 나가기 (내보내기 점검에서는 편집으로 돌아오기)</td></tr>
+        <tr><th><kbd>F6</kbd> <kbd>Shift</kbd>+<kbd>F6</kbd></th><td>개요 → 문서 → 속성 사이 옮기기 (문서에서는 Tab이 속성으로 이어져요)</td></tr>
+        <tr><th><kbd>Ctrl</kbd>+<kbd>\</kbd></th><td>속성 칸 접기 / 펴기</td></tr>
+        <tr><th><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>\</kbd></th><td>개요 접기 / 펴기</td></tr>
         <tr><th><kbd>?</kbd></th><td>이 표 열기</td></tr>
       </tbody>
     </table>

@@ -12,7 +12,7 @@ window.Doc = (() => {
 
   const els = new Map();                                            // key -> <article> (or the 참고 heading)
   const videos = new Map();                                         // node id -> <video>, kept so a redraw does not restart playback
-  let curDraft = null, pageOrigin = null;                           // where result pages open (from /api/state)
+  let curDraft = null, pageOrigin = null, mode = "edit";                           // where result pages open (from /api/state)
 
   const node = id => window.Tree?.nodes?.()[id];
   const key = e => `${e.id}|${e.stub || "node"}`;
@@ -23,7 +23,7 @@ window.Doc = (() => {
   const hash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) | 0; return s.length + ":" + (h >>> 0).toString(36); };
 
   // ---- the walk: export order ----
-  // [{id, depth, stub: null|"off"|"folded"|"page"|"heading", pageOf: id|null}] in document order.
+  // [{id, stub: null|"off"|"folded"|"page"|"heading", pageOf: id|null}] in document order.
   // on=false -> one stub entry, no children. folded (not already in reference) -> a "folded" stub in place, and the subtree walked
   // again into the reference list of the document it belongs to. page (not in reference) -> a "page" stub in place, then the
   // subtree inline right after it, marked pageOf=id (the band). As in outline.py page_blocks, a page has its own reference list:
@@ -31,25 +31,25 @@ window.Doc = (() => {
   // reference list (folded nodes outside every page) is appended at the end under the "__ref" heading.
   function plan() {
     const main = [], ref = [], N = Tree.nodes();
-    const walk = (ids, depth, out, refOut, inRef, pageOf) => {
+    const walk = (ids, out, refOut, inRef, pageOf) => {
       for (const id of ids) {
         const n = N[id]; if (!n) continue;
-        if (!n.on) { out.push({ id, depth, stub: "off", pageOf }); continue; }
+        if (!n.on) { out.push({ id, stub: "off", pageOf }); continue; }
         if (n.page && !inRef) {
-          out.push({ id, depth, stub: "page", pageOf }, { id, depth, stub: null, pageOf: id });
+          out.push({ id, stub: "page", pageOf }, { id, stub: null, pageOf: id });
           const own = [];
-          walk(n.children || [], depth + 1, out, own, false, id);
-          if (own.length) out.push({ id: "__ref:" + id, depth, stub: "heading", pageOf: id }, ...own);
+          walk(n.children || [], out, own, false, id);
+          if (own.length) out.push({ id: "__ref:" + id, stub: "heading", pageOf: id }, ...own);
           continue;
         }
         if (n.folded && !inRef) {
-          out.push({ id, depth, stub: "folded", pageOf }); refOut.push({ id, depth: 1, stub: null, pageOf });
-          walk(n.children || [], 2, refOut, refOut, true, pageOf); continue;
+          out.push({ id, stub: "folded", pageOf }); refOut.push({ id, stub: null, pageOf });
+          walk(n.children || [], refOut, refOut, true, pageOf); continue;
         }
-        out.push({ id, depth, stub: null, pageOf }); walk(n.children || [], depth + 1, out, refOut, inRef, pageOf);
+        out.push({ id, stub: null, pageOf }); walk(n.children || [], out, refOut, inRef, pageOf);
       }
     };
-    walk(Tree.state.draft.root, 0, main, ref, false, null);
+    walk(Tree.state.draft.root, main, ref, false, null);
     return { main, ref };
   }
 
@@ -148,7 +148,7 @@ window.Doc = (() => {
       + `<div class="doc-main">`
       + `<div class="n-stale" role="status" hidden><span>구조가 바뀌었습니다. 본문을 다시 읽어 보세요</span><span class="n-stalebtns"><button type="button" class="n-polish" hidden>✨ 다시 다듬기</button><button type="button" class="n-ack">확인했어요</button></span></div>`
       + (n.kind === "project" || n.kind === "claim" ? `<input class="doc-title ${n.kind === "project" ? "h2" : "h3"}" aria-label="제목" placeholder="제목" autocomplete="off">` : "")
-      + (record ? `<div class="n-media" hidden></div><div class="doc-caps"><input class="n-cap" aria-label="설명 첫 줄: 무엇이 보이는가" placeholder="무엇이 보이는가" autocomplete="off"><input class="n-cap" aria-label="설명 둘째 줄: 왜 중요한가" placeholder="왜 중요한가" autocomplete="off"></div>` : "")
+      + (record ? `<div class="n-media" hidden></div><div class="doc-caps"><textarea class="n-cap" rows="1" aria-label="설명 첫 줄: 무엇이 보이는가" placeholder="무엇이 보이는가" autocomplete="off"></textarea><textarea class="n-cap" rows="1" aria-label="설명 둘째 줄: 왜 중요한가" placeholder="왜 중요한가" autocomplete="off"></textarea></div>` : "")
       + (listed ? `<ul class="n-items"></ul>` : "")
       + (bodied ? `<div class="n-body" role="textbox" aria-multiline="true" aria-label="본문" data-placeholder="본문을 쓰세요"></div>` : "")
       + `<div class="n-aidbox" data-for="${esc(id)}" aria-live="polite"></div>`
@@ -170,15 +170,27 @@ window.Doc = (() => {
     title?.addEventListener("input", () => Keys.typing(id, "title", title.value));
     if (record) {
       const onCap = () => {
+        grow(caps[0]); grow(caps[1]);
         const text = caps.map(c => c.value.trim() ? c.value : "").filter(Boolean);
         Keys.typing(id, "caption", text);
         remember(id);
       };
-      caps.forEach(c => c.addEventListener("input", onCap));
+      caps.forEach(c => {
+        c.addEventListener("input", () => {                         // a caption is one line that wraps: no line breaks, typed or pasted
+          if (c.value.includes("\n")) { const at = c.selectionStart; c.value = c.value.replace(/\s*\n\s*/g, " "); c.setSelectionRange(at, at); }
+          onCap();
+        });
+        c.addEventListener("keydown", e => { if (e.key === "Enter" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !e.isComposing) e.preventDefault(); });
+      });
+      requestAnimationFrame(() => caps.forEach(grow));
     }
     if (body) wireBody(id, body);
     return art;
   }
+
+  // a caption field is as tall as its text (a long line wraps instead of being cut); a hidden field has no height to measure yet
+  function grow(c) { c.style.height = "auto"; if (c.scrollHeight) c.style.height = c.scrollHeight + "px"; }
+  new ResizeObserver(() => { if (mode === "edit") host()?.querySelectorAll(".n-cap").forEach(grow); }).observe(document.getElementById("docPane"));
 
   function wireBody(id, body) {
     try { body.contentEditable = "plaintext-only"; } catch { body.contentEditable = "true"; } // browsers without plaintext-only
@@ -284,7 +296,7 @@ window.Doc = (() => {
     if (title && !focused(title) && title.value !== (n.title || "")) title.value = n.title || "";
     if (n.kind === "record") {
       const caps = [...art.querySelectorAll(".n-cap")];
-      if (!caps.some(focused)) { const cap = n.caption || []; caps.forEach((c, i) => { if (c.value !== (cap[i] || "")) c.value = cap[i] || ""; }); }
+      if (!caps.some(focused)) { const cap = n.caption || []; caps.forEach((c, i) => { if (c.value !== (cap[i] || "")) c.value = cap[i] || ""; grow(c); }); }
       renderMedia(q(".n-media"), n);
     }
     renderItems(q(".n-items"), n);
@@ -315,8 +327,9 @@ window.Doc = (() => {
   // ---- update: re-walk, move/create/remove articles, re-sync what changed ----
   function update() {
     const h = host(); if (!h || !Tree.state.draft) return;
+    if (mode === "check") { scheduleCheck(); return; }               // the articles are re-synced on the way back to the edit view
     const { main, ref } = plan(), N = Tree.nodes();
-    const wanted = [...main, ...(ref.length ? [{ id: "__ref", depth: 0, stub: "heading", pageOf: null }, ...ref] : [])];
+    const wanted = [...main, ...(ref.length ? [{ id: "__ref", stub: "heading", pageOf: null }, ...ref] : [])];
     const keys = wanted.map(e => e.stub === "heading" ? e.id : key(e)), keep = new Set(keys);
     const ae = document.activeElement, inside = ae && h.contains(ae) ? ae : null, caret = inside && caretOf(inside);
     let moved = false;
@@ -339,7 +352,7 @@ window.Doc = (() => {
   }
 
   function open(draft) {
-    if (draft !== curDraft) { videos.forEach(v => v.pause()); videos.clear(); curDraft = draft; }
+    if (draft !== curDraft) { videos.forEach(v => v.pause()); videos.clear(); curDraft = draft; checkKey = null; setMode("edit"); }
     els.clear(); host()?.replaceChildren();
     const p = pane(); if (p) p.scrollTop = 0;
     update();
@@ -354,6 +367,7 @@ window.Doc = (() => {
   // highlight the node's articles; scroll to its page stub when it is a page (the stub paragraph is where it sits in the report),
   // else to its body article, else to its stub
   function select(id, { scroll = true } = {}) {
+    if (mode === "check") return;                                    // the check view has no per-node anchors: no selection sync there
     let target = null;
     const rank = el => el.classList.contains("stub-page") ? 3 : el.classList.contains("stub") ? 1 : 2;
     for (const el of host().querySelectorAll(".doc-node")) {
@@ -370,11 +384,11 @@ window.Doc = (() => {
   }
 
   // The export is Confluence storage XHTML, which a browser does not draw (ac:image, CDATA links): give the attachments their real
-  // files here, and keep the rest as the browser's plain reading of it. Not wired yet: the 내보내기 점검 view (Task 4) paints with it.
+  // files here, and keep the rest as the browser's plain reading of it. The 내보내기 점검 view paints with it.
   function display(xhtml) {
     const urls = new Map();
     for (const [m] of Tree.walk()) {
-      const week = m.src?.week || Tree.state.draft.week;
+      const week = m.src?.week || Tree.state.draft.week;              // the server names an attachment `${week}_${href with "/" as "_"}`
       for (const href of [m.href, m.representative, ...(m.files || []).map(f => f.href)]) {
         if (href) urls.set(`${week}_${href.replace(/\//g, "_")}`, `/files/${week}/${I().enc(href)}`);
       }
@@ -388,7 +402,47 @@ window.Doc = (() => {
       .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_, t) => esc(t));
   }
 
+  // ---- 내보내기 점검: the whole draft through the server's own renderer, read-only ----
+  // No fields and no selection sync here (the export has no per-node anchors). Cached by what the export depends on.
+  let checkKey = null, checkTimer = null, checkSeq = 0;
+  const checkEl = () => document.getElementById("docCheck");
+  function scheduleCheck() { clearTimeout(checkTimer); checkTimer = setTimeout(renderCheck, 400); }
+  async function renderCheck() {
+    const box = checkEl(); if (!box || mode !== "check") return;
+    const seq = ++checkSeq, state = box.querySelector(".n-pstate"), view = box.querySelector(".doc-checkbody");
+    const slow = setTimeout(() => { if (seq === checkSeq) { state.textContent = "미리보기 만드는 중…"; view.classList.add("busy"); } }, 300);
+    try {
+      await Tree.settle();                                           // a pending save first: what is shown is what is stored
+      const d = Tree.state.draft; if (!d || seq !== checkSeq) return;
+      const key = JSON.stringify(d.nodes) + "|" + JSON.stringify(d.root) + "|" + (d.week || "");
+      if (key === checkKey && view.childNodes.length) { state.textContent = ""; return; }
+      const r = await api("/api/preview", { method: "POST", body: { draft: d } });
+      if (seq !== checkSeq || mode !== "check") return;
+      if (r?.error) { state.textContent = "미리보기를 만들지 못했어요: " + r.error; return; }
+      view.innerHTML = r?.xhtml ? display(r.xhtml) : "";            // the server renders our own blocks to XHTML (text escaped there)
+      state.textContent = r?.xhtml ? "" : "내보낼 내용이 아직 없어요. 개요에서 줄을 켜 보세요.";
+      checkKey = key;
+    } catch (e) {
+      if (seq === checkSeq) state.textContent = "미리보기를 만들지 못했어요: " + e.message;
+    } finally { clearTimeout(slow); if (seq === checkSeq) view.classList.remove("busy"); }
+  }
+
+  // "edit" | "check": the toggle in the document head, and Escape (keys.js) back from the check view
+  function setMode(m) {
+    if (m !== "edit" && m !== "check") return;
+    document.getElementById("tree")?.setAttribute("data-mode", m);
+    document.querySelectorAll(".doc-mode [data-mode]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === m)));
+    if (m === mode) return;
+    mode = m;
+    const h = host(), box = checkEl(); if (!h || !box) return;
+    clearTimeout(checkTimer); checkSeq++;
+    if (m === "check") { h.hidden = true; box.hidden = false; box.querySelector(".doc-checkbody").classList.remove("busy"); renderCheck(); return; }
+    box.hidden = true; h.hidden = false;
+    update(); h.querySelectorAll(".n-cap").forEach(grow);            // what changed while it was hidden; captions could not measure themselves
+  }
+  document.querySelectorAll(".doc-mode [data-mode]").forEach(b => b.addEventListener("click", () => setMode(b.dataset.mode)));
+
   fetch("/api/state").then(r => r.json()).then(s => { pageOrigin = s.page_origin || null; }).catch(() => {});
 
-  return { open, update, select, refresh, remember, focusNode, display };
+  return { open, update, select, refresh, remember, focusNode, setMode };
 })();
