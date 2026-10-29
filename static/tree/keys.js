@@ -354,7 +354,8 @@ window.Keys = (() => {
     const root = document.getElementById("tree"), here = document.activeElement?.closest?.(".t-outline, .t-doc, .t-inspector");
     const at = here?.classList.contains("t-inspector") ? 2 : here?.classList.contains("t-doc") ? 1 : 0;
     let next = (at + dir + 3) % 3;
-    if (next === 0 && root.dataset.outline !== "on") next = (next + dir + 3) % 3; // a hidden outline is skipped (hiding it was a choice)
+    // a hidden outline is skipped (hiding it was a choice); in a narrow window the tabs show it anyway, so it stays in the cycle
+    if (next === 0 && root.dataset.outline !== "on" && !matchMedia("(max-width: 1007px)").matches) next = (next + dir + 3) % 3;
     root.dataset.pane = ["tree", "node", "drawer"][next]; // narrow windows show one column at a time
     if (next === 2 && !window.Inspector?.isOpen?.()) window.Inspector?.reveal?.(); // a hidden inspector opens for now: F6 is a way into it, not a toggle
     const first = sel => [...root.querySelectorAll(sel)].find(el => el.offsetParent !== null); // a hidden button cannot take focus

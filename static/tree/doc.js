@@ -461,6 +461,7 @@ window.Doc = (() => {
     if (m === "check") { h.hidden = true; box.hidden = false; box.querySelector(".doc-checkbody").classList.remove("busy"); renderCheck(); return; }
     box.hidden = true; h.hidden = false;
     update(); h.querySelectorAll(".n-cap").forEach(grow);            // what changed while it was hidden; captions could not measure themselves
+    select(Tree.state.sel, { scroll: false });                       // the selection moved in the outline meanwhile: rail and stale banner follow it
   }
   document.querySelectorAll(".doc-mode [data-mode]").forEach(b => b.addEventListener("click", () => setMode(b.dataset.mode)));
 
