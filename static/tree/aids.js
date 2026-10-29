@@ -1,13 +1,13 @@
 /* Aids: the three writing aids (rewrite a node, rewrite the week summary, rewrite a record's captions) and the dialog that picks the
    provider behind them. A request becomes a server job; this file polls it once a second, shows a thin progress line with a cancel
-   in the node pane, and when the answer is in, a proposal panel (now | proposed). Nothing changes until [적용]; applying is one
+   under the node in the document, and when the answer is in, a proposal panel (now | proposed). Nothing changes until [적용]; applying is one
    history entry (Keys.applyProposal), so one Ctrl+Z gives the text and the stale flag back together.
    Jobs are kept per node id (Aids.state.jobs): leaving a node does not stop its job, and coming back shows the same state. */
 window.Aids = (() => {
   // boot.js (which defines Composer) loads after this file: look the helpers up at call time
   const api = (...a) => window.Composer.api(...a), esc = s => window.Composer.esc(s), toast = (...a) => window.Composer.toast(...a);
   const $ = id => document.getElementById(id);
-  const TIP = "LLM 공급자가 설정되지 않았습니다 · ⚙ LLM";
+  const TIP = "LLM 공급자가 설정되지 않았습니다 · ⚙ 설정";
   const FIELD = { node: "text", summary: "text", caption: "caption" };     // which field of the node a kind rewrites
   const POLL_MS = 1000, MAX_MS = 5 * 60 * 1000, MAX_MISSES = 5;
   const S = { ready: false, providers: {}, llm: null, available: {}, jobs: {}, draftId: null };
@@ -26,7 +26,7 @@ window.Aids = (() => {
     const b = $("llmBtn");
     if (b) b.title = S.ready ? `글쓰기 보조: ${S.llm?.provider || ""}${S.llm?.model ? ":" + S.llm.model : ""} (눌러서 바꿉니다)` : TIP;
     const sel = window.Tree?.state?.sel;
-    if (window.Tree?.state?.draft && sel) window.NodePane?.show?.(sel), window.Inspector?.show?.(sel);     // enable / disable the buttons on screen
+    if (window.Tree?.state?.draft) { window.Doc?.update?.(); if (sel) window.Inspector?.show?.(sel); }     // enable / disable the buttons on screen
     return S.ready;
   }
   // a tree draft opened: another draft's jobs are forgotten, the same draft's keep running
@@ -43,11 +43,11 @@ window.Aids = (() => {
 
   // ---- jobs ----
   function stop(nodeId) { clearInterval(timers.get(nodeId)); timers.delete(nodeId); }
-  function boxFor(nodeId) { return [...document.querySelectorAll("#nodePane .n-aidbox")].find(b => b.dataset.for === nodeId) || null; }
-  // full: the buttons around the box change too (a job started or ended); otherwise only the seconds tick
+  function boxFor(nodeId) { return document.querySelector(`#docPane .n-aidbox[data-for="${CSS.escape(nodeId)}"]`); }
+  // full: the buttons around the box change too (a job started or ended); otherwise only the seconds tick.
+  // Not gated on the selection: a job can finish on a node that is not selected, and its article is on screen.
   function paint(nodeId, full) {
-    if (window.Tree?.state?.sel !== nodeId) return;
-    if (full) { window.NodePane?.show?.(nodeId); window.Inspector?.show?.(nodeId); }
+    if (full) { window.Doc?.refresh?.(nodeId); if (window.Tree?.state?.sel === nodeId) window.Inspector?.show?.(nodeId); }   // the inspector shows the selected node only
     else { const box = boxFor(nodeId); if (box) render(nodeId, box); }
   }
   function fail(job, why) {
@@ -122,11 +122,11 @@ window.Aids = (() => {
     const to = caption ? (Array.isArray(v) ? v : [String(v)]).slice(0, 2) : Array.isArray(v) ? v.join("\n") : String(v);
     delete S.jobs[nodeId]; stop(nodeId);
     if (!window.Keys.applyProposal(nodeId, FIELD[j.kind], to)) return;
-    window.Motion.sweep(document.querySelector(caption ? "#nodePane .n-caps" : "#nodePane .n-body"));   // 착지
-    if (caption) window.NodePane?.remember?.(nodeId);                         // the memory keeps the caption the writer settled on
+    window.Motion.sweep(document.querySelector(`#docPane .doc-node[data-id="${CSS.escape(nodeId)}"] ${caption ? ".doc-caps" : ".n-body"}`));   // 착지
+    if (caption) window.Doc?.remember?.(nodeId);                              // the memory keeps the caption the writer settled on
   }
 
-  // ---- the node pane's box: progress line, proposal panel, or the reason it failed ----
+  // ---- the box under the node in the document: progress line, proposal panel, or the reason it failed ----
   const cur = (j, n) => j.kind === "caption" ? (n.caption || []) : (n.text || "");
   const lines = v => (Array.isArray(v) ? v : String(v ?? "").split("\n")).filter(l => String(l).trim());
   function column(j, v) {

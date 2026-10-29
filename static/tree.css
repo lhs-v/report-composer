@@ -12,7 +12,7 @@
 }
 .tree > aside, .tree > section { min-width: 0; min-height: 0; overflow: auto; border-right: 1px solid var(--line); }
 .tree > .t-outline { grid-column: 1; }
-.tree > .t-node { grid-column: 2; }
+.tree > .t-doc { grid-column: 2; }
 .tree > .t-inspector { grid-column: 3; }
 .tree[data-outline="off"] { grid-template-columns: 0 minmax(0, 1fr) var(--c-insp); }
 .tree[data-insp="off"] { grid-template-columns: minmax(220px, var(--c-outline)) minmax(0, 1fr) 0; }
@@ -95,10 +95,43 @@ button.chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--
 @keyframes sweep { from { transform: scaleX(0); } 50% { transform: scaleX(1); } to { transform: scaleX(1); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .land, .sweep::after { animation: none; } }
 
-/* node column */
-.t-node { padding: 24px 28px 96px; background: var(--surface); }
-.t-node > * { max-width: 68ch; }
-.t-node:empty::before { content: "왼쪽에서 줄을 고르면 여기서 글을 다듬습니다."; display: block; max-width: 68ch; padding: 24px 0; color: var(--muted); font-size: 13px; }
+/* document column */
+.t-doc { padding: 0 0 50vh; background: var(--surface); }
+.doc-head { position: sticky; top: 0; z-index: 1; display: flex; justify-content: flex-end; gap: 6px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.doc-tools { display: flex; gap: 6px; }
+.doc { max-width: 76ch; margin: 0 auto; padding: 24px 40px; }
+.doc-node { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 0 8px; margin: 0 0 18px -36px; padding: 4px 0; border-left: 3px solid transparent; border-radius: 4px; scroll-margin-top: 56px; }
+.doc-node:focus { outline: none; }
+.doc-node.sel { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 40%, transparent); }
+.doc-gutter { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 6px; opacity: 0; transition: opacity 120ms linear; }
+.doc-node:hover .doc-gutter, .doc-node.sel .doc-gutter, .doc-gutter:focus-within { opacity: 1; }
+.doc-dot { position: relative; width: 14px; height: 14px; padding: 0; border-radius: 50%; border: 1.5px solid var(--accent); background: var(--accent); cursor: pointer; transition: transform var(--t-tap) var(--ease-out); }
+.doc-dot::after { content: ""; position: absolute; inset: -8px; } /* a 30px target around a 14px dot */
+.doc-dot.tap, .doc-stubbtn.tap { transform: scale(.85); }
+.doc-stale { color: var(--mark); font-size: 8px; }
+.doc-stale[hidden] { display: none; }
+.doc-main { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.doc-title { width: 100%; box-sizing: border-box; padding: 2px 0; border: 0; border-bottom: 1px solid transparent; border-radius: 0; background: transparent; color: var(--fg); font-family: var(--font-display); font-weight: 600; }
+.doc-title.h2 { font-size: 22px; line-height: 1.35; margin-top: 18px; }
+.doc-title.h3 { font-size: 17px; line-height: 1.4; }
+.doc-title:hover { border-bottom-color: var(--line); } .doc-title:focus { border-bottom-color: var(--accent); }
+.doc .n-body { min-height: 1.7em; padding: 4px 8px; margin: 0 -8px; }
+.kind-summary .doc-main { padding: 12px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.doc-caps { display: flex; flex-direction: column; gap: 2px; }
+.doc-caps .n-cap { border: 0; border-bottom: 1px solid transparent; border-radius: 0; background: transparent; padding: 2px 0; font-size: 13px; color: var(--muted); }
+.doc-caps .n-cap:first-child { color: var(--fg); }
+.doc-caps .n-cap:hover { border-bottom-color: var(--line); } .doc-caps .n-cap:focus { border-bottom-color: var(--accent); }
+.doc-node.stub { margin-bottom: 8px; }
+.doc-node.stub .doc-main { flex-direction: row; align-items: baseline; gap: 10px; color: var(--muted); font-size: 13px; }
+.doc-node.stub-off .doc-main { border-left: 2px dotted var(--line); padding-left: 10px; }
+.doc-stubbtn { font-size: 12px; padding: 0 10px; border-radius: 999px; transition: transform var(--t-tap) var(--ease-out); }
+.doc-pagestub { margin: 0; font-size: 14px; } .doc-link { color: var(--accent); }
+.doc-node.stub-page .doc-main { color: var(--fg); }
+.doc-node[data-page-of] { border-left: 2px solid var(--accent-soft); margin-left: -32px; padding-left: 0; }
+.doc-node[data-page-of].sel { border-left-color: var(--accent); }
+.doc-band { grid-column: 1 / -1; font: 500 11px/1.6 var(--font-mono); color: var(--accent); padding: 0 0 2px 8px; }
+.doc-refhead { margin: 32px 0 8px; padding-top: 16px; border-top: 1px dashed var(--line); font: 600 15px/1.4 var(--font-display); color: var(--muted); letter-spacing: 0; text-transform: none; }
+.doc.empty::before { content: "켜진 줄이 없습니다. 개요에서 줄을 켜면 여기에 보고서가 생깁니다."; display: block; padding: 48px 0; color: var(--muted); font-size: 13px; text-align: center; }
 
 /* drawer column */
 .d-tabs { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); }
@@ -124,15 +157,10 @@ button.chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--
 kbd { font: 500 11px/1.4 var(--font-mono); padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--surface); color: var(--fg); }
 #keysDlg { width: min(560px, 94vw); }
 
-/* node pane (n-*) */
-.n-main { display: flex; flex-direction: column; gap: 12px; }
-.n-main > * { max-width: 68ch; }
+/* the parts of one node in the document (n-*) */
 .n-stale { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 8px 12px; border: 1px solid var(--mark); border-radius: 8px; color: var(--mark); background: color-mix(in srgb, var(--mark) 8%, transparent); font-size: 13px; }
 .n-stale[hidden] { display: none; }
 .n-stale button { flex: none; }
-.n-title { width: 100%; box-sizing: border-box; padding: 4px 0; border: 0; border-bottom: 1px solid transparent; border-radius: 0; background: transparent; color: var(--fg); font: 600 22px/1.4 var(--font-display); }
-.n-title:hover { border-bottom-color: var(--line); }
-.n-title:focus { border-bottom-color: var(--accent); }
 .n-body { min-height: 6em; padding: 8px 10px; border: 1px solid transparent; border-radius: 8px; font: 400 15px/1.7 var(--font-body); white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
 .n-body:hover { border-color: var(--line); }
 .n-body:focus { border-color: var(--accent); background: var(--bg); font-family: var(--font-mono); font-size: 14px; }
@@ -146,7 +174,6 @@ kbd { font: 500 11px/1.4 var(--font-mono); padding: 0 5px; border: 1px solid var
 @media (prefers-reduced-motion: reduce) { .n-media.loading { animation: none; } }
 .n-media img, .n-media video { display: block; max-width: 100%; max-height: 420px; margin: 0 auto; }
 .n-open { display: inline-block; padding: 12px 16px; color: var(--accent); }
-.n-caps { display: flex; flex-direction: column; gap: 6px; }
 .n-cap { width: 100%; box-sizing: border-box; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: 400 14px/1.5 var(--font-body); }
 .n-cap:focus { border-color: var(--accent); }
 .n-show { margin: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; }
@@ -183,14 +210,14 @@ kbd { font: 500 11px/1.4 var(--font-mono); padding: 0 5px; border: 1px solid var
   .tree[data-outline="off"], .tree[data-insp="off"], .tree[data-outline="off"][data-insp="off"] { grid-template-columns: minmax(0, 1fr); }
   .tree[data-outline="off"] > .t-outline, .tree[data-insp="off"] > .t-inspector { display: flex; }
   .tree > aside, .tree > section { border-right: 0; grid-row: 2; }
-  .tree > .t-outline, .tree > .t-node, .tree > .t-inspector { grid-column: 1; }
+  .tree > .t-outline, .tree > .t-doc, .tree > .t-inspector { grid-column: 1; }
   .t-tabs { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface); grid-row: 1; }
   .t-tabs button { border-radius: 999px; }
   .tree[data-pane="tree"] .t-tabs [data-pane="tree"],
   .tree[data-pane="node"] .t-tabs [data-pane="node"],
   .tree[data-pane="drawer"] .t-tabs [data-pane="drawer"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-soft); }
   .tree:not([data-pane="tree"]) .t-outline,
-  .tree:not([data-pane="node"]) .t-node,
+  .tree:not([data-pane="node"]) .t-doc,
   .tree:not([data-pane="drawer"]) .t-inspector { display: none; }
 }
 

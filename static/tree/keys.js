@@ -130,7 +130,7 @@ window.Keys = (() => {
     Tree.change(() => { ops.forEach(apply); if (N()[e.sel]) T().sel = e.sel; fixSel(before, null); });
     (back ? redo : undo).push(e);
     // a caption the memory was already told about (typing sends it): tell it again what the text is now
-    for (const o of ops) if (o.type === "text" && o.field === "caption") window.NodePane?.remember?.(o.id);
+    for (const o of ops) if (o.type === "text" && o.field === "caption") window.Doc?.remember?.(o.id);
   }
 
   // a writing aid's proposal lands as ONE history entry: the new text (or caption lines) and, when the node was stale, stale -> false.
@@ -320,7 +320,7 @@ window.Keys = (() => {
     const nid = newId();
     op({ type: "split", id, newId: nid, at, title2, text2: tail });
     const li = T().rows.get(nid); if (li) Motion.once(li, "open", 200);
-    Tree.select(nid);
+    Tree.select(nid, null, { focus: false, scroll: false });          // the document puts the caret in the new body (Doc.focusNode)
     return nid;
   }
 
@@ -345,15 +345,18 @@ window.Keys = (() => {
 
   // ---- keyboard ----
   const helpDlg = () => document.getElementById("keysDlg");
-  // Tab inside the tree is depth (Tab / Shift+Tab move a row), so F6 is the way between the three columns: tree -> node pane -> drawer.
-  // Past the tree the DOM order is the Tab order (node pane inputs, then the drawer tabs).
+  // Tab inside the tree is depth (Tab / Shift+Tab move a row), so F6 is the way between the three columns: outline -> document -> inspector (속성).
+  // Past the outline the DOM order is the Tab order (the document's fields, then the inspector's buttons and tabs).
   function hop(dir) {
-    const root = document.getElementById("tree"), here = document.activeElement?.closest?.(".t-outline, .t-node, .t-inspector");
-    const at = here?.classList.contains("t-inspector") ? 2 : here?.classList.contains("t-node") ? 1 : 0;
+    const root = document.getElementById("tree"), here = document.activeElement?.closest?.(".t-outline, .t-doc, .t-inspector");
+    const at = here?.classList.contains("t-inspector") ? 2 : here?.classList.contains("t-doc") ? 1 : 0;
     const next = (at + dir + 3) % 3;
     root.dataset.pane = ["tree", "node", "drawer"][next]; // narrow windows show one column at a time
+    if (next === 2 && !window.Inspector?.isOpen?.()) window.Inspector?.toggle?.(true); // a hidden inspector opens: F6 is a way into it
     const first = sel => [...root.querySelectorAll(sel)].find(el => el.offsetParent !== null); // a hidden button cannot take focus
-    const target = [() => T().rows.get(T().sel), () => first(".t-node .n-title, .t-node button, .t-node [contenteditable]"),
+    // the selected node's body or title first, then any field of the document
+    const inDoc = () => [".t-doc .sel .n-body", ".t-doc .sel .doc-title", ".t-doc .sel input", ".t-doc .doc-node input, .t-doc .doc-node [contenteditable]"].reduce((f, s) => f || first(s), null);
+    const target = [() => T().rows.get(T().sel), inDoc,
                     () => root.querySelector('.t-inspector .i-states button:not([hidden]), .t-inspector .d-tabs [aria-selected="true"]')][next]();
     target?.focus();
   }

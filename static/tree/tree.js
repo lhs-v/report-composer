@@ -190,7 +190,7 @@ window.Tree = (() => {
     const ae = document.activeElement, keep = !ae || ae === document.body || list().contains(ae);
     mutate(); S.draft.updated = new Date().toISOString(); S.rev++; render();
     if (keep) S.rows.get(S.sel)?.focus();
-    window.NodePane?.show?.(S.sel); window.Inspector?.show?.(S.sel);
+    window.Doc?.update?.(); window.Inspector?.show?.(S.sel);
     clearTimeout(S.saveTimer); saveState("저장 중…");
     const draft = S.draft, rev = S.rev;
     S.saveTimer = setTimeout(() => save(draft, rev), 600);
@@ -216,7 +216,7 @@ window.Tree = (() => {
       li.classList.toggle("range", !!range?.includes(k)); li.tabIndex = k === id ? 0 : -1;
     }
     if (opts.focus !== false) S.rows.get(id)?.focus({ preventScroll: false });
-    window.NodePane?.show?.(id); window.Inspector?.show?.(id); window.Drawer?.show?.(id);
+    window.Doc?.select?.(id, { scroll: opts.scroll !== false }); window.Inspector?.show?.(id); window.Drawer?.show?.(id);
   }
   function setFilter(f) {
     S.filter = f;
@@ -234,7 +234,8 @@ window.Tree = (() => {
     list().replaceChildren();
     const first = draft.root?.[1] || draft.root?.[0] || null; // the first row after the summary: where the writing starts
     window.Inspector?.open?.(draft);
-    render(); select(first); Keys.bind(); paintHead();
+    window.Doc?.open?.(draft);
+    render(); select(first, null, { scroll: false }); Keys.bind(); paintHead();   // the document starts at its top (the summary)
     refreshIfStale(draft);
   }
 
