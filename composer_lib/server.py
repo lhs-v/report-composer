@@ -5,7 +5,7 @@ Routes
   GET  /files/<week>/<path>   package files          GET  /api/state               config (masked), inbox, weeks
   GET  /api/library           blocks per week        GET  /api/drafts              list
   POST /api/drafts {title}    create                 GET/PUT/DELETE /api/drafts/<id>
-  POST /api/drafts/<id>/duplicate                    POST /api/preview {blocks} -> {xhtml, error}
+  POST /api/drafts/<id>/duplicate                    POST /api/preview {blocks|draft} -> {xhtml, error, pages}
   GET  /api/confluence/spaces                        GET  /api/confluence/search?space=&q=
   POST /api/confluence/publish/<id> {space, parent_id, title?}
   POST /api/export/<id>       folder with body.html + referenced files
@@ -155,11 +155,16 @@ class App:
 
     def export_blocks(self, draft: dict) -> tuple[list[dict], list[list[dict]]]:
         """The blocks of the folder and copy-paste exports, with no child-page stub text in them. A tree's child pages come as separate lists."""
+        main, pages = self.export_parts(draft)
+        return main, [pg["blocks"] for pg in pages]
+
+    def export_parts(self, draft: dict) -> tuple[list[dict], list[dict]]:
+        """`export_blocks` with each child page's node id and title kept: [{"node", "title", "blocks"}]."""
         if draft.get("kind") != "tree":
             return draft.get("blocks") or [], []
         from .outline import link_stubs, to_blocks
         main, pages = to_blocks(draft)
-        return link_stubs(main, {}), [link_stubs(pg["blocks"], {}) for pg in pages]
+        return link_stubs(main, {}), [{**pg, "blocks": link_stubs(pg["blocks"], {})} for pg in pages]
 
     def note_used(self, draft: dict) -> None:
         if draft.get("kind") == "tree" and draft.get("week"):
@@ -496,11 +501,12 @@ def make_handler(app: App):
                     return self._json(404, {"error": "no such draft"})
             if p == "/api/preview":
                 try:
-                    blocks = app.export_blocks(body["draft"])[0] if isinstance(body.get("draft"), dict) else (body.get("blocks") or [])
+                    blocks, parts = app.export_parts(body["draft"]) if isinstance(body.get("draft"), dict) else (body.get("blocks") or [], [])
                     xhtml = render(blocks)
+                    pages = [{"node": pg["node"], "title": pg["title"], "xhtml": render(pg["blocks"])} for pg in parts]   # each 별도 페이지, as 서식 복사 appends it
                 except (KeyError, TypeError, ValueError, RecursionError) as e:    # a draft body that is not a whole tree (no nodes, a cycle)
                     return self._json(422, {"error": f"초안 모양이 잘못됐습니다: {type(e).__name__}"})
-                return self._json(200, {"xhtml": xhtml, "error": validate(xhtml)})
+                return self._json(200, {"xhtml": xhtml, "error": validate(xhtml), "pages": [{**pg, "error": validate(pg["xhtml"])} for pg in pages]})
             if p == "/api/polish":
                 from .polish import PolishError, polish_draft
                 if app.cfg.llm.provider and app.cfg.llm.provider != "gemini":

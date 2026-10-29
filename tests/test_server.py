@@ -528,6 +528,18 @@ class ServerV3Tests(unittest.TestCase):
         self.assertNotIn("[[page:", pv["xhtml"])
         self.assertIn("등급 체계 결론", pv["xhtml"])                                             # the stub's own title and lead stay
 
+    def test_preview_of_a_tree_hands_back_each_child_page(self):
+        d, claim = self._page_draft()
+        code, pv = self.req("/api/preview", "POST", {"draft": d})
+        self.assertEqual(code, 200)
+        self.assertEqual([pg["node"] for pg in pv["pages"]], [claim["id"]])     # the check view shows the page subtree, not only the stub
+        page = pv["pages"][0]
+        self.assertIn(claim["title"], page["title"])
+        self.assertIn("<ac:image", page["xhtml"])                                # the claim's record image travels with its page
+        self.assertNotIn("[[page:", page["xhtml"])
+        self.assertIsNone(page["error"])
+        self.assertEqual(self.req("/api/preview", "POST", {"blocks": []})[1].get("pages"), [])   # a block draft has none
+
     def test_a_draft_without_a_week_records_no_use(self):
         d, claim = self._page_draft()
         d["week"] = ""
