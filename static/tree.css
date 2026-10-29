@@ -131,6 +131,7 @@ button.chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--
 .doc-node[data-page-of].sel { border-left-color: var(--accent); }
 .doc-band { grid-column: 1 / -1; font: 500 11px/1.6 var(--font-mono); color: var(--accent); padding: 0 0 2px 8px; }
 .doc-refhead { margin: 32px 0 8px; padding-top: 16px; border-top: 1px dashed var(--line); font: 600 15px/1.4 var(--font-display); color: var(--muted); letter-spacing: 0; text-transform: none; }
+.doc-refhead[data-page-of] { margin: 16px 0 8px -32px; padding: 12px 0 0 30px; border-top: 0; border-left: 2px solid var(--accent-soft); font-size: 14px; }
 .doc.empty::before { content: "켜진 줄이 없습니다. 개요에서 줄을 켜면 여기에 보고서가 생깁니다."; display: block; padding: 48px 0; color: var(--muted); font-size: 13px; text-align: center; }
 
 /* drawer column */

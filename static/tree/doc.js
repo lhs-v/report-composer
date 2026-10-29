@@ -19,24 +19,37 @@ window.Doc = (() => {
   const inline = s => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`(.+?)`/g, "<code>$1</code>").replace(/\n/g, "<br>");
   const focused = el => !!el && document.activeElement === el;
   const label = n => n.title || (n.text || "").split("\n")[0] || "(빈 글)";
+  // a short fingerprint of a string (the items and files of a node go into the signature without making it long)
+  const hash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) | 0; return s.length + ":" + (h >>> 0).toString(36); };
 
   // ---- the walk: export order ----
-  // [{id, depth, stub: null|"off"|"folded"|"page", pageOf: id|null}] in document order.
+  // [{id, depth, stub: null|"off"|"folded"|"page"|"heading", pageOf: id|null}] in document order.
   // on=false -> one stub entry, no children. folded (not already in reference) -> a "folded" stub in place, and the subtree walked
-  // again into the reference list. page (not in reference) -> a "page" stub in place, then the subtree inline right after it,
-  // marked pageOf=id (the band). The reference list is appended under a synthetic "참고" heading.
+  // again into the reference list of the document it belongs to. page (not in reference) -> a "page" stub in place, then the
+  // subtree inline right after it, marked pageOf=id (the band). As in outline.py page_blocks, a page has its own reference list:
+  // a folded node inside the page lands after the page's last inline entry, under a heading keyed "__ref:<pageId>". The main
+  // reference list (folded nodes outside every page) is appended at the end under the "__ref" heading.
   function plan() {
     const main = [], ref = [], N = Tree.nodes();
-    const walk = (ids, depth, out, inRef, pageOf) => {
+    const walk = (ids, depth, out, refOut, inRef, pageOf) => {
       for (const id of ids) {
         const n = N[id]; if (!n) continue;
         if (!n.on) { out.push({ id, depth, stub: "off", pageOf }); continue; }
-        if (n.page && !inRef) { out.push({ id, depth, stub: "page", pageOf }); out.push({ id, depth, stub: null, pageOf: id }); walk(n.children || [], depth + 1, out, false, id); continue; }
-        if (n.folded && !inRef) { out.push({ id, depth, stub: "folded", pageOf }); ref.push({ id, depth: 1, stub: null, pageOf: null }); walk(n.children || [], 2, ref, true, null); continue; }
-        out.push({ id, depth, stub: null, pageOf }); walk(n.children || [], depth + 1, out, inRef, pageOf);
+        if (n.page && !inRef) {
+          out.push({ id, depth, stub: "page", pageOf }, { id, depth, stub: null, pageOf: id });
+          const own = [];
+          walk(n.children || [], depth + 1, out, own, false, id);
+          if (own.length) out.push({ id: "__ref:" + id, depth, stub: "heading", pageOf: id }, ...own);
+          continue;
+        }
+        if (n.folded && !inRef) {
+          out.push({ id, depth, stub: "folded", pageOf }); refOut.push({ id, depth: 1, stub: null, pageOf });
+          walk(n.children || [], 2, refOut, refOut, true, pageOf); continue;
+        }
+        out.push({ id, depth, stub: null, pageOf }); walk(n.children || [], depth + 1, out, refOut, inRef, pageOf);
       }
     };
-    walk(Tree.state.draft.root, 0, main, false, null);
+    walk(Tree.state.draft.root, 0, main, ref, false, null);
     return { main, ref };
   }
 
@@ -62,9 +75,13 @@ window.Doc = (() => {
     for (let i = 0; i < raw.length; i++) { if (hide[i]) continue; if (seen === visible) return i; seen++; }
     return raw.length;
   }
+  // the caret at text offset `at` (counted over the body's text nodes, as caretOffset counts it)
   function setCaret(body, at) {
-    const t = body.firstChild; if (!t) return;
-    const r = document.createRange(); r.setStart(t, Math.min(at, t.data.length)); r.collapse(true);
+    const w = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+    let t = null, last = null;
+    while ((t = w.nextNode())) { last = t; if (at <= t.data.length) break; at -= t.data.length; }
+    t = t || last; if (!t) return;
+    const r = document.createRange(); r.setStart(t, Math.max(0, Math.min(at, t.data.length))); r.collapse(true);
     const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
   }
   function caretOffset(body) {
@@ -115,9 +132,13 @@ window.Doc = (() => {
       art.classList.add("stub", "stub-" + entry.stub); art.innerHTML = stubHTML(n, entry);
       const btn = art.querySelector(".doc-stubbtn");
       btn?.addEventListener("click", () => {
-        if (entry.stub === "off") Tree.toggle(id); else Tree.fold(id);
+        const off = entry.stub === "off";
+        if (off) Tree.toggle(id); else Tree.fold(id);
         Tree.select(id, null, { focus: false });
-        Motion.tap(els.get(`${id}|node`)?.querySelector(".doc-dot"));   // the expanded article's dot: the 딸깍 lands where the eye is
+        // this button has left the document: the keyboard goes to the expanded article (its dot after 켜기, so Space turns it off again)
+        const art2 = els.get(`${id}|node`), dot = art2?.querySelector(".doc-dot");
+        Motion.tap(dot);                                               // the 딸깍 lands where the eye is
+        (off ? dot : art2)?.focus({ preventScroll: true });
       });
       return art;
     }
@@ -134,7 +155,12 @@ window.Doc = (() => {
       + `</div>`;
     const q = s => art.querySelector(s);
     const dot = q(".doc-dot"), title = q(".doc-title"), caps = [...art.querySelectorAll(".n-cap")], body = q(".n-body");
-    dot.addEventListener("click", () => { Motion.tap(dot); Tree.toggle(id); Motion.tap(els.get(`${id}|off`)?.querySelector(".doc-stubbtn")); });
+    dot.addEventListener("click", () => {
+      Motion.tap(dot); Tree.toggle(id);
+      // the article became a stub: the keyboard goes to its 켜기 (Space turns the node back on)
+      const btn = els.get(`${id}|off`)?.querySelector(".doc-stubbtn");
+      Motion.tap(btn); btn?.focus({ preventScroll: true });
+    });
     q(".n-ack").addEventListener("click", () => {
       const m = node(id); if (!m?.stale) return;
       if (body) Motion.sweep(body);                                  // 착지: the one motion here
@@ -238,11 +264,10 @@ window.Doc = (() => {
     art._entry = entry;
     art.classList.toggle("sel", Tree.state.sel === n.id);
     if (!entry.stub) syncAids(art, n);
-    const sig = JSON.stringify([n.title, n.text, n.caption, n.show, n.on, n.folded, n.page, n.stale, n.items?.length, n.representative, n.href,
-      Tree.state.sel === n.id, entry.pageOf, entry.depth]);
+    const sig = JSON.stringify([n.title, n.text, n.caption, n.show, n.on, n.folded, n.page, n.stale, n.representative, n.href,
+      hash(JSON.stringify([n.items || [], n.files || [], n.src?.week || ""])), Tree.state.sel === n.id, entry.pageOf]);
     if (art.dataset.sig === sig) return;
     art.dataset.sig = sig;
-    art.style.setProperty("--depth", entry.depth);
     if (entry.pageOf) art.dataset.pageOf = entry.pageOf; else delete art.dataset.pageOf;
     if (entry.stub) { art.querySelector(".doc-stubtext").textContent = stubText(n, entry); return; }
     // the band of a page sits on the page's own article (the first inline one)
@@ -266,29 +291,50 @@ window.Doc = (() => {
     renderBody(q(".n-body"), n);
   }
 
-  function refHeading() {
-    const h = document.createElement("h2"); h.className = "doc-refhead"; h.dataset.key = "__ref"; h.textContent = "참고";
+  // the "참고" heading of a reference list: "__ref" for the document's own (at the end), "__ref:<pageId>" for a page's (inside its band)
+  function refHeading(entry) {
+    const h = document.createElement("h2"); h.className = "doc-refhead"; h.dataset.key = entry.id; h.textContent = "참고";
+    if (entry.pageOf) h.dataset.pageOf = entry.pageOf;
     return h;
+  }
+
+  // where the caret (or an input's selection) is, so it can be put back when its article had to move
+  function caretOf(el) {
+    if (el.matches("input, textarea")) return { start: el.selectionStart, end: el.selectionEnd };
+    if (el.isContentEditable) { const at = caretOffset(el); return at === null ? null : { at }; }
+    return null;
+  }
+  function restoreCaret(el, c) {
+    if (!c) return;
+    if ("start" in c) { try { el.setSelectionRange(c.start, c.end); } catch { /* not a text input */ } return; }
+    const raw = el.classList.contains("n-body") ? node(el.closest(".doc-node")?.dataset.id)?.text : null;
+    if (raw != null && el.textContent !== raw) el.textContent = raw;   // a blur on the way may have rendered it
+    setCaret(el, c.at);
   }
 
   // ---- update: re-walk, move/create/remove articles, re-sync what changed ----
   function update() {
     const h = host(); if (!h || !Tree.state.draft) return;
     const { main, ref } = plan(), N = Tree.nodes();
-    const wanted = [...main, ...(ref.length ? [{ id: "__ref", depth: 0, stub: "heading" }, ...ref] : [])];
-    const keys = wanted.map(e => e.id === "__ref" ? "__ref" : key(e)), keep = new Set(keys);
-    const ae = document.activeElement, inside = ae && h.contains(ae) ? ae : null;
+    const wanted = [...main, ...(ref.length ? [{ id: "__ref", depth: 0, stub: "heading", pageOf: null }, ...ref] : [])];
+    const keys = wanted.map(e => e.stub === "heading" ? e.id : key(e)), keep = new Set(keys);
+    const ae = document.activeElement, inside = ae && h.contains(ae) ? ae : null, caret = inside && caretOf(inside);
+    let moved = false;
     // remove first, so the rest only moves when its order really changed (a moved ancestor drops the focus)
     for (const [k, el] of els) if (!keep.has(k)) { el.remove(); els.delete(k); }
     wanted.forEach((e, i) => {
       const k = keys[i];
       let el = els.get(k);
-      if (!el) { el = e.id === "__ref" ? refHeading() : build(N[e.id], e); els.set(k, el); }
-      if (h.children[i] !== el) h.insertBefore(el, h.children[i] || null);
-      if (e.id !== "__ref") sync(el, N[e.id], e);
+      if (!el) { el = e.stub === "heading" ? refHeading(e) : build(N[e.id], e); els.set(k, el); }
+      if (h.children[i] !== el) { if (inside && el.contains(inside)) moved = true; h.insertBefore(el, h.children[i] || null); }
+      if (e.stub !== "heading") sync(el, N[e.id], e);
     });
     while (h.children.length > wanted.length) h.lastChild.remove();
-    if (inside && inside.isConnected && document.activeElement !== inside) inside.focus({ preventScroll: true });
+    // the field being edited sat in an article that had to move: give it back its focus and its caret
+    if (inside && inside.isConnected && (moved || document.activeElement !== inside)) {
+      if (document.activeElement !== inside) inside.focus({ preventScroll: true });
+      restoreCaret(inside, caret);
+    }
     h.classList.toggle("empty", !wanted.length);
   }
 
@@ -305,11 +351,14 @@ window.Doc = (() => {
     for (const el of host().querySelectorAll(`.doc-node[data-id="${CSS.escape(id)}"]`)) if (el._entry) { delete el.dataset.sig; sync(el, n, el._entry); }
   }
 
+  // highlight the node's articles; scroll to its page stub when it is a page (the stub paragraph is where it sits in the report),
+  // else to its body article, else to its stub
   function select(id, { scroll = true } = {}) {
     let target = null;
+    const rank = el => el.classList.contains("stub-page") ? 3 : el.classList.contains("stub") ? 1 : 2;
     for (const el of host().querySelectorAll(".doc-node")) {
       const on = el.dataset.id === id; el.classList.toggle("sel", on);
-      if (on && (!target || (target.classList.contains("stub") && !el.classList.contains("stub")))) target = el;
+      if (on && (!target || rank(el) > rank(target))) target = el;
     }
     if (scroll && target) target.scrollIntoView({ block: "start", behavior: Motion.reduced() ? "auto" : "smooth" });
   }
@@ -332,8 +381,9 @@ window.Doc = (() => {
     }
     return xhtml
       .replace(/<ac:image\b[^>]*>\s*<ri:attachment ri:filename="([^"]*)"\s*\/>\s*<\/ac:image>/g, (_, name) => {
-        const url = urls.get(name.replace(/&amp;/g, "&"));
-        return url ? `<img src="${esc(url)}" alt="${name}">` : `<span class="n-pimg">[그림] ${name}</span>`;
+        const plain = name.replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+        const url = urls.get(plain);
+        return url ? `<img src="${esc(url)}" alt="${esc(plain)}">` : `<span class="n-pimg">[그림] ${esc(plain)}</span>`;
       })
       .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_, t) => esc(t));
   }
