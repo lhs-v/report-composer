@@ -136,7 +136,8 @@ window.Aids = (() => {
   }
   function render(nodeId, host) {
     const j = S.jobs[nodeId], n = node(nodeId);
-    if (!j || !n) { if (host.dataset.sig) { host.replaceChildren(); host.dataset.sig = ""; } return; }
+    if (!j || !n) { host.removeAttribute("aria-live"); if (host.dataset.sig) { host.replaceChildren(); host.dataset.sig = ""; } return; }
+    host.setAttribute("aria-live", "polite");                                  // a live region only while this node has a job (not one per article)
     const now = cur(j, n);
     const sig = j.status === "done" ? `d|${j.id}|${JSON.stringify(now)}` : j.status === "failed" ? `f|${j.error}` : `p|${j.kind}`;
     if (host.dataset.sig !== sig) {

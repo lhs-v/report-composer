@@ -186,7 +186,8 @@ window.Keys = (() => {
     op({ type: "page", id, from: !!n.page, to: !n.page });
   }
 
-  function newText(after) {
+  // stay: made from the document (Ctrl+Enter while writing there) -- the caret goes into the new article, the outline row is only selected
+  function newText(after, { stay = false } = {}) {
     const a = N()[after]; if (!a) return null;
     if (document.getElementById("tree").dataset.mode === "check") window.Doc?.setMode("edit"); // the new text must be visible and focusable
     // under a project the new text is its first child; otherwise it is the next sibling of the selected row
@@ -194,7 +195,8 @@ window.Keys = (() => {
     const index = a.kind === "project" ? 0 : siblings(parent).indexOf(after) + 1;
     const id = newId();
     op({ type: "newText", id, parent, index });
-    Tree.select(id);
+    if (stay) { Tree.select(id, null, { focus: false, scroll: false }); window.Doc?.focusNode(id); }
+    else Tree.select(id);
     return id;
   }
 
@@ -351,9 +353,10 @@ window.Keys = (() => {
   function hop(dir) {
     const root = document.getElementById("tree"), here = document.activeElement?.closest?.(".t-outline, .t-doc, .t-inspector");
     const at = here?.classList.contains("t-inspector") ? 2 : here?.classList.contains("t-doc") ? 1 : 0;
-    const next = (at + dir + 3) % 3;
+    let next = (at + dir + 3) % 3;
+    if (next === 0 && root.dataset.outline !== "on") next = (next + dir + 3) % 3; // a hidden outline is skipped (hiding it was a choice)
     root.dataset.pane = ["tree", "node", "drawer"][next]; // narrow windows show one column at a time
-    if (next === 2 && !window.Inspector?.isOpen?.()) window.Inspector?.toggle?.(true); // a hidden inspector opens: F6 is a way into it
+    if (next === 2 && !window.Inspector?.isOpen?.()) window.Inspector?.reveal?.(); // a hidden inspector opens for now: F6 is a way into it, not a toggle
     const first = sel => [...root.querySelectorAll(sel)].find(el => el.offsetParent !== null); // a hidden button cannot take focus
     // the selected node's body or title first, then any field of the document
     const inDoc = () => [".t-doc .sel .n-body", ".t-doc .sel .doc-title", ".t-doc .sel input, .t-doc .sel textarea", ".t-doc .doc-node input, .t-doc .doc-node textarea, .t-doc .doc-node [contenteditable]", "#docCheck:not([hidden])"].reduce((f, s) => f || first(s), null);
@@ -369,7 +372,7 @@ window.Keys = (() => {
     if (k === "F6" && !ctrl && !alt) { e.preventDefault(); hop(shift ? -1 : 1); return; }
     if (ctrl && code === "KeyS") { e.preventDefault(); Tree.flush(); return; }
     if (ctrl && !alt && code === "Backslash") { e.preventDefault(); if (shift) window.Inspector?.setOutline(); else window.Inspector?.toggle(); return; }
-    if (ctrl && k === "Enter") { e.preventDefault(); if (S.sel) newText(S.sel); return; }
+    if (ctrl && k === "Enter") { e.preventDefault(); if (S.sel) newText(S.sel, { stay: !!e.target.closest?.("#docPane") }); return; }
     if (editable) return; // inside a text field the field's own keys win
     if (ctrl && !alt && code === "KeyZ") { e.preventDefault(); step(!shift); return; }
     if (ctrl && !alt && code === "KeyY") { e.preventDefault(); step(false); return; }

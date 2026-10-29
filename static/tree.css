@@ -24,6 +24,9 @@
 .t-inspector .t-drawer { flex: 1; min-height: 0; overflow: auto; }
 .i-kind { display: flex; align-items: center; gap: 8px; }
 .i-flags { font-size: 12px; color: var(--muted); }
+.i-titlef { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.i-title { width: 100%; box-sizing: border-box; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: 400 14px/1.5 var(--font-body); }
+.i-title:focus { border-color: var(--accent); }
 .i-src { align-self: flex-start; max-width: 100%; padding: 0; border: 0; background: none; color: var(--muted); font: 400 12px/1.5 var(--font-mono); text-align: left; cursor: pointer; overflow-wrap: anywhere; }
 .i-src:hover { color: var(--accent); text-decoration: underline; }
 .i-states { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -102,10 +105,13 @@ button.chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--
 .doc-mode { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
 .doc-mode button { border: 0; border-radius: 0; font-size: 13px; padding: 2px 12px; background: transparent; color: var(--muted); }
 .doc-mode button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.doc-mode button:focus-visible { outline-offset: -2px; } /* the pill clips anything outside it */
 .doc[hidden] { display: none; }
 .doc-check .n-pstate { margin: 0 0 8px; min-height: 1.4em; }
 .doc-checkbody { font-size: 14px; line-height: 1.6; }
 .doc-checkbody.busy { opacity: .45; }
+.doc-checkhr { margin: 28px 0 12px; border: 0; border-top: 1px solid var(--line); }
+.doc-checkpage { margin: 0 0 8px; font: 500 12px/1.6 var(--font-mono); color: var(--accent); letter-spacing: 0; text-transform: none; }
 .doc { max-width: 76ch; margin: 0 auto; padding: 24px 40px; }
 .doc-node { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 0 8px; margin: 0 0 18px -36px; padding: 4px 0; border-left: 3px solid transparent; border-radius: 4px; scroll-margin-top: 56px; }
 .doc-node:focus { outline: none; }
@@ -125,14 +131,15 @@ button.chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--
 .doc .n-body { min-height: 1.7em; padding: 4px 8px; margin: 0 -8px; }
 .kind-summary .doc-main { padding: 12px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
 .doc-caps { display: flex; flex-direction: column; gap: 2px; }
-.doc-caps .n-cap { display: block; resize: none; overflow: hidden; font-family: inherit; line-height: 1.5; border: 0; border-bottom: 1px solid transparent; border-radius: 0; background: transparent; padding: 2px 0; font-size: 13px; color: var(--muted); }
+.doc-caps .n-cap { display: block; width: 100%; box-sizing: border-box; resize: none; overflow: hidden; font-family: inherit; line-height: 1.5; border: 0; border-bottom: 1px solid transparent; border-radius: 0; background: transparent; padding: 2px 0; font-size: 13px; color: var(--muted); }
 .doc-caps .n-cap:first-child { color: var(--fg); }
 .doc-caps .n-cap:hover { border-bottom-color: var(--line); } .doc-caps .n-cap:focus { border-bottom-color: var(--accent); }
 .doc-node.stub { margin-bottom: 8px; }
 .doc-node.stub .doc-main { flex-direction: row; align-items: baseline; gap: 10px; color: var(--muted); font-size: 13px; }
 .doc-node.stub-off .doc-main { border-left: 2px dotted var(--line); padding-left: 10px; }
 .doc-stubbtn { font-size: 12px; padding: 0 10px; border-radius: 999px; transition: transform var(--t-tap) var(--ease-out); }
-.doc-pagestub { margin: 0; font-size: 14px; } .doc-link { color: var(--accent); }
+.doc-pagestub { margin: 0; font-size: 14px; }
+.doc-link { border: 0; padding: 0; border-radius: 2px; background: none; font: inherit; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .doc-node.stub-page .doc-main { color: var(--fg); }
 .doc-node[data-page-of] { border-left: 2px solid var(--accent-soft); margin-left: -32px; padding-left: 0; }
 .doc-node[data-page-of].sel { border-left-color: var(--accent); }
@@ -177,13 +184,8 @@ kbd { font: 500 11px/1.4 var(--font-mono); padding: 0 5px; border: 1px solid var
 .n-body.sweep::after { bottom: 0; }
 .n-media { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--bg); min-height: 64px; }
 .n-media[hidden] { display: none; }
-.n-media.loading { background: linear-gradient(90deg, var(--bg), var(--accent-soft), var(--bg)) 0 0 / 200% 100%; animation: n-wait 1.2s linear infinite; min-height: 160px; }
-@keyframes n-wait { to { background-position: -200% 0; } }
-@media (prefers-reduced-motion: reduce) { .n-media.loading { animation: none; } }
 .n-media img, .n-media video { display: block; max-width: 100%; max-height: 420px; margin: 0 auto; }
 .n-open { display: inline-block; padding: 12px 16px; color: var(--accent); }
-.n-cap { width: 100%; box-sizing: border-box; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: 400 14px/1.5 var(--font-body); }
-.n-cap:focus { border-color: var(--accent); }
 .n-show { margin: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; }
 .n-show legend { padding: 0 6px; font-size: 12px; color: var(--muted); }
 .n-opts { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow: auto; }
@@ -198,8 +200,6 @@ kbd { font: 500 11px/1.4 var(--font-mono); padding: 0 5px; border: 1px solid var
 .n-items li { padding: 6px 12px; font-size: 14px; border-bottom: 1px solid var(--line); }
 .n-items li:last-child { border-bottom: 0; }
 .n-items time { margin-right: 6px; font: 400 12px var(--font-mono); color: var(--muted); }
-.n-previewbox { margin-top: 32px; padding-top: 12px; border-top: 1px solid var(--line); max-width: 68ch; }
-.n-previewbox h3 { margin: 0 0 4px; font: 500 12px/1.5 var(--font-body); color: var(--muted); letter-spacing: 0; text-transform: none; }
 .n-pstate { margin: 0; min-height: 1.5em; font-size: 12px; color: var(--muted); }
 .n-preview { padding: 12px 16px; border: 1px dashed var(--line); border-radius: 8px; background: var(--surface); font-size: 14px; line-height: 1.6; overflow-x: auto; transition: opacity 120ms linear; }
 .n-preview.busy { opacity: .45; }

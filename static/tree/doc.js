@@ -110,7 +110,7 @@ window.Doc = (() => {
   function stubHTML(n, entry) {
     const main = entry.stub === "off" ? `<span class="doc-stubtext"></span><button type="button" class="doc-stubbtn">켜기</button>`
       : entry.stub === "folded" ? `<span class="doc-stubtext"></span><button type="button" class="doc-stubbtn">펴기</button>`
-      : `<p class="doc-pagestub"><span class="doc-stubtext"></span> <span class="doc-link">[자세히]</span></p>`;
+      : `<p class="doc-pagestub"><span class="doc-stubtext"></span> <button type="button" class="doc-link">자세히</button></p>`;
     return `<div class="doc-gutter"></div><div class="doc-main">${main}</div>`;
   }
   function stubText(n, entry) {
@@ -140,6 +140,13 @@ window.Doc = (() => {
         Motion.tap(dot);                                               // the 딸깍 lands where the eye is
         (off ? dot : art2)?.focus({ preventScroll: true });
       });
+      // 자세히: the page itself follows the stub inline, under its band
+      art.querySelector(".doc-link")?.addEventListener("click", () => {
+        Tree.select(id, null, { focus: false, scroll: false });
+        const band = els.get(`${id}|node`);
+        band?.scrollIntoView({ block: "start", behavior: Motion.reduced() ? "auto" : "smooth" });
+        band?.focus({ preventScroll: true });
+      });
       return art;
     }
     const { BODIED, AID } = I();
@@ -151,11 +158,12 @@ window.Doc = (() => {
       + (record ? `<div class="n-media" hidden></div><div class="doc-caps"><textarea class="n-cap" rows="1" aria-label="설명 첫 줄: 무엇이 보이는가" placeholder="무엇이 보이는가" autocomplete="off"></textarea><textarea class="n-cap" rows="1" aria-label="설명 둘째 줄: 왜 중요한가" placeholder="왜 중요한가" autocomplete="off"></textarea></div>` : "")
       + (listed ? `<ul class="n-items"></ul>` : "")
       + (bodied ? `<div class="n-body" role="textbox" aria-multiline="true" aria-label="본문" data-placeholder="본문을 쓰세요"></div>` : "")
-      + `<div class="n-aidbox" data-for="${esc(id)}" aria-live="polite"></div>`
+      + `<div class="n-aidbox" data-for="${esc(id)}"></div>`          // a live region only while a job exists (Aids.render)
       + `</div>`;
     const q = s => art.querySelector(s);
     const dot = q(".doc-dot"), title = q(".doc-title"), caps = [...art.querySelectorAll(".n-cap")], body = q(".n-body");
     dot.addEventListener("click", () => {
+      Tree.select(id, null, { focus: false, scroll: false });          // like the outline's check box: the inspector follows the row it acts on
       Motion.tap(dot); Tree.toggle(id);
       // the article became a stub: the keyboard goes to its 켜기 (Space turns the node back on)
       const btn = els.get(`${id}|off`)?.querySelector(".doc-stubbtn");
@@ -251,9 +259,9 @@ window.Doc = (() => {
       }
       if (box.firstChild !== v) box.replaceChildren(v);
     } else if (m.kind === "image") {
-      const img = new Image(); img.loading = "lazy"; img.alt = n.title || ""; img.className = "n-img"; box.classList.add("loading");
-      img.onload = () => box.classList.remove("loading");
-      img.onerror = () => { box.classList.remove("loading"); box.replaceChildren(failed("그림", m.href)); };
+      // lazy: an off-screen image loads when it is scrolled to (no shimmer: it would run for every image not yet in view)
+      const img = new Image(); img.loading = "lazy"; img.alt = n.title || ""; img.className = "n-img";
+      img.onerror = () => box.replaceChildren(failed("그림", m.href));
       img.src = url; box.replaceChildren(img);
     } else {
       const a = document.createElement("a"); a.className = "n-open"; a.target = "_blank"; a.rel = "noopener"; a.textContent = "열기 · " + m.href.split("/").pop();
@@ -269,6 +277,11 @@ window.Doc = (() => {
     const polish = art.querySelector(".n-polish"), ack = art.querySelector(".n-ack");
     polish.hidden = !ready || !I().AID[n.kind]; polish.disabled = busy; ack.hidden = !polish.hidden;
     aids?.render(n.id, box);
+  }
+
+  // the stale banner (확인했어요 / ✨ 다시 다듬기) sits on the selected article only; every other stale article keeps just its gutter dot
+  function staleBanner(art, n) {
+    const b = art.querySelector(":scope > .doc-main > .n-stale"); if (b) b.hidden = !(n?.stale && Tree.state.sel === n.id);
   }
 
   // bring one article to the node's current values; fields with focus are left alone
@@ -292,7 +305,7 @@ window.Doc = (() => {
     const dot = q(".doc-dot"), title = q(".doc-title");
     dot.setAttribute("aria-pressed", String(!!n.on)); dot.setAttribute("aria-label", `${label(n)} 켜기/끄기`);
     q(".doc-stale").hidden = !n.stale;
-    q(".n-stale").hidden = !n.stale;
+    staleBanner(art, n);
     if (title && !focused(title) && title.value !== (n.title || "")) title.value = n.title || "";
     if (n.kind === "record") {
       const caps = [...art.querySelectorAll(".n-cap")];
@@ -364,14 +377,15 @@ window.Doc = (() => {
     for (const el of host().querySelectorAll(`.doc-node[data-id="${CSS.escape(id)}"]`)) if (el._entry) { delete el.dataset.sig; sync(el, n, el._entry); }
   }
 
-  // highlight the node's articles; scroll to its page stub when it is a page (the stub paragraph is where it sits in the report),
-  // else to its body article, else to its stub
+  // highlight the node's articles; scroll to its page or folded stub when it has one (the stub is where it sits in the report),
+  // else to its body article, else to its (off) stub
   function select(id, { scroll = true } = {}) {
     if (mode === "check") return;                                    // the check view has no per-node anchors: no selection sync there
     let target = null;
-    const rank = el => el.classList.contains("stub-page") ? 3 : el.classList.contains("stub") ? 1 : 2;
+    const rank = el => el.classList.contains("stub-page") || el.classList.contains("stub-folded") ? 3 : el.classList.contains("stub") ? 1 : 2;
     for (const el of host().querySelectorAll(".doc-node")) {
       const on = el.dataset.id === id; el.classList.toggle("sel", on);
+      if (!el.classList.contains("stub")) staleBanner(el, node(el.dataset.id));
       if (on && (!target || rank(el) > rank(target))) target = el;
     }
     if (scroll && target) target.scrollIntoView({ block: "start", behavior: Motion.reduced() ? "auto" : "smooth" });
@@ -422,10 +436,13 @@ window.Doc = (() => {
       if (key === checkKey && view.childNodes.length) { state.textContent = ""; return; }
       const r = await api("/api/preview", { method: "POST", body: { draft: d } });
       if (seq !== checkSeq || mode !== "check") return;
-      if (r?.error) { state.textContent = "미리보기를 만들지 못했어요: " + r.error; return; }
-      view.innerHTML = r?.xhtml ? display(r.xhtml) : "";            // the server renders our own blocks to XHTML (text escaped there)
+      const bad = r?.error || (r?.pages || []).find(pg => pg.error)?.error;
+      if (bad) { state.textContent = "미리보기를 만들지 못했어요: " + bad; return; }
+      // the server renders our own blocks to XHTML (text escaped there); each 별도 페이지 follows the body after a divider, as 서식 복사 does
+      view.innerHTML = (r?.xhtml ? display(r.xhtml) : "") + (r?.pages || []).map(pg =>
+        `<hr class="doc-checkhr"><h2 class="doc-checkpage">별도 페이지 · ${esc(pg.title)}</h2>${display(pg.xhtml || "")}`).join("");
       view.querySelectorAll("a").forEach(a => { a.target = "_blank"; a.rel = "noopener"; });
-      state.textContent = r?.xhtml ? "" : "내보낼 내용이 아직 없어요. 개요에서 줄을 켜 보세요.";
+      state.textContent = r?.xhtml || r?.pages?.length ? "" : "내보낼 내용이 아직 없어요. 개요에서 줄을 켜 보세요.";
       checkKey = key;
     } catch (e) {
       if (seq === checkSeq) state.textContent = "미리보기를 만들지 못했어요: " + e.message;

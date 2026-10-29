@@ -27,6 +27,11 @@ window.Inspector = (() => {
     if (open && matchMedia(NARROW).matches) tree().dataset.pane = "drawer";
   }
   function setOutline(open = tree().dataset.outline !== "on") { store("outline", open ? "on" : "off"); applyPanes(); }
+  // open the column for now without remembering it (F6 passes through it; only a toggle is a choice)
+  function reveal() {
+    tree().dataset.insp = "on";
+    for (const b of document.querySelectorAll('[data-toggle-pane="insp"]')) b.setAttribute("aria-pressed", "true");
+  }
   matchMedia(WIDE).addEventListener("change", () => { if (!stored("insp")) applyPanes(); });
 
   // ---- the files a record can show (a radio per file; files that stayed at home are listed but cannot be picked) ----
@@ -41,16 +46,19 @@ window.Inspector = (() => {
   // ---- props ----
   function build(n) {
     const record = n.kind === "record", listed = n.kind === "flow" || n.kind === "ledger", aid = I().AID[n.kind];
+    const titled = record || n.kind === "text";                      // project/claim titles are headings in the document; these have none there
     props().innerHTML = `<div class="i-kind"><span class="chip">${esc(I().KIND_LABEL[n.kind] || n.kind)}</span><span class="i-flags"></span></div>`
+      + (titled ? `<label class="i-titlef">제목<input class="i-title" autocomplete="off" placeholder="제목"></label>` : "")
       + `<button type="button" class="i-src" title="이 줄의 근거를 아래 참고에서 봅니다"></button>`
       + `<div class="i-states"><button type="button" class="i-on"></button><button type="button" class="i-fold"></button><button type="button" class="i-page"></button></div>`
       + (record ? `<fieldset class="n-show"><legend>보여 줄 것</legend><div class="n-opts"></div></fieldset>` : "")
       + (listed ? `<button type="button" class="i-totext">글로 바꾸기</button>` : "")
       + (aid ? `<div class="i-aid"><button type="button" class="n-aid">${aid[1]}</button><span class="i-aidnote small muted"></span></div>` : "");
     const q = s => props().querySelector(s);
-    S.els = { flags: q(".i-flags"), src: q(".i-src"), on: q(".i-on"), fold: q(".i-fold"), page: q(".i-page"), opts: q(".n-opts"), totext: q(".i-totext"), aid: q(".n-aid"), aidnote: q(".i-aidnote") };
+    S.els = { flags: q(".i-flags"), title: q(".i-title"), src: q(".i-src"), on: q(".i-on"), fold: q(".i-fold"), page: q(".i-page"), opts: q(".n-opts"), totext: q(".i-totext"), aid: q(".n-aid"), aidnote: q(".i-aidnote") };
     S.kind = n.kind;
     const id = n.id, e = S.els;
+    e.title?.addEventListener("input", () => window.Keys.typing(id, "title", e.title.value));
     e.src.addEventListener("click", () => {
       window.Drawer?.show?.(id, "evidence");
       if (matchMedia(NARROW).matches) tree().dataset.pane = "drawer";
@@ -74,6 +82,7 @@ window.Inspector = (() => {
   function sync(n) {
     const e = S.els, info = I();
     e.flags.textContent = info.flags(n); e.src.textContent = info.sourceLine(n);
+    if (e.title && document.activeElement !== e.title && e.title.value !== (n.title || "")) e.title.value = n.title || "";
     e.on.textContent = n.on ? "끄기" : "켜기"; e.on.setAttribute("aria-pressed", String(!!n.on));
     e.fold.hidden = !n.children?.length; e.fold.textContent = n.folded ? "펴기" : "접기"; e.fold.setAttribute("aria-pressed", String(!!n.folded));
     e.page.hidden = !["project", "claim"].includes(n.kind); e.page.textContent = "별도 페이지"; e.page.setAttribute("aria-pressed", String(!!n.page));
@@ -99,5 +108,5 @@ window.Inspector = (() => {
   }
   function open() { applyPanes(); S.id = null; S.kind = null; props().replaceChildren(); }
 
-  return { open, show, toggle, isOpen, setOutline, applyPanes };
+  return { open, show, toggle, reveal, isOpen, setOutline, applyPanes };
 })();
