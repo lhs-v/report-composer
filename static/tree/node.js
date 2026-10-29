@@ -7,13 +7,7 @@ window.NodePane = (() => {
   // boot.js (which defines Composer) loads after this file: look the helpers up at call time
   const api = (...a) => window.Composer.api(...a), esc = s => window.Composer.esc(s);
   const pane = () => document.getElementById("nodePane");
-  const IMG = /\.(png|jpe?g|gif|webp|svg|avif)$/i, VID = /\.(mp4|webm)$/i;
-  const BODIED = ["claim", "text", "summary", "project"];      // kinds that show a body
-  const SPLITTABLE = ["claim", "text"];
-  // which writing aid a kind has (aids.js asks the server for it): the body kinds rewrite their text, the summary its lines, a record its captions
-  const AID = { claim: ["node", "다시 쓰기"], project: ["node", "다시 쓰기"], text: ["node", "다시 쓰기"], summary: ["summary", "요약 다시 쓰기"], record: ["caption", "설명 다시 쓰기"] };
-  const KIND_LABEL = { summary: "요약", project: "프로젝트", claim: "주장", record: "기록", flow: "흐름", ledger: "장부", text: "내 글" };
-  const LEDGER_LABEL = { decision: "결정", resolved: "닫힘", open: "열림", next: "다음" };
+  const { IMG, VID, BODIED, SPLITTABLE, AID, KIND_LABEL, LEDGER_LABEL, enc, mediaFor, options, sourceLine, flags } = window.NodeInfo;   // nodeinfo.js loads before this file
 
   let cur = null, curDraft = null, curKind = null, main = null;     // what is on screen
   let els = {};                                                    // the fields of the current node
@@ -22,7 +16,6 @@ window.NodePane = (() => {
 
   const node = id => window.Tree?.nodes?.()[id];
   const inline = s => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`(.+?)`/g, "<code>$1</code>").replace(/\n/g, "<br>");
-  const enc = href => String(href).split("/").map(encodeURIComponent).join("/");
   const focused = el => el && document.activeElement === el;
 
   // ---- the resting body shows markdown; the focused body shows the raw text ----
@@ -60,36 +53,6 @@ window.NodePane = (() => {
   }
 
   // ---- pieces ----
-  function sourceLine(n) {
-    const s = n.src || {};
-    if ((n.marks || []).includes("picked")) return "집은 그림 · 근거 기록 없음";
-    if (!s.project && !s.record && !s.chapter) return "내가 쓴 글 · 근거 없음";
-    let chapter = "";
-    if (n.kind === "record" || n.kind === "flow") {
-      for (const [m, , p] of Tree.walk()) if (m.id === n.id && p) { chapter = node(p)?.title || ""; break; }
-    } else if (n.kind === "claim" || n.kind === "ledger") chapter = KIND_LABEL[n.kind];
-    return [s.project, chapter && (chapter.length > 28 ? chapter.slice(0, 27) + "…" : chapter), s.record].filter(Boolean).join(" · ");
-  }
-  function flags(n) {
-    return [n.on ? "켜짐" : "꺼짐", n.children?.length ? (n.folded ? "접힘" : "펼침") : "", n.page ? "별도 페이지" : ""].filter(Boolean).join(" · ");
-  }
-  function mediaFor(n) {
-    const show = n.show || "representative";
-    let href = show === "representative" ? (n.representative || n.href) : show === "core" ? n.href : (n.files || []).find(f => f.rel === show)?.href;
-    if (!href) return null;
-    return { href, kind: VID.test(href) ? "video" : IMG.test(href) ? "image" : "link" };
-  }
-  function options(n) {
-    const out = [];
-    if (n.representative) out.push({ v: "representative", label: "대표 그림", sub: n.representative.split("/").pop() });
-    if (n.href) out.push({ v: "core", label: "핵심 파일", sub: n.href.split("/").pop() });
-    for (const f of n.files || []) {
-      if (f.home || !f.href) { if (f.home) out.push({ v: f.rel, label: f.rel, home: true }); continue; }
-      if (f.href === n.href || f.href === n.representative) continue;   // already offered above
-      out.push({ v: f.rel, label: f.rel });
-    }
-    return out;
-  }
   function optionsHTML(n, name) {
     const opts = options(n), radio = o => `<label class="n-opt${o.home ? " home" : ""}"><input type="radio" name="${esc(name)}" value="${esc(o.v)}"${o.home ? " disabled" : ""}`
       + `${(n.show || "representative") === o.v ? " checked" : ""}><span class="n-optl">${esc(o.label)}</span>${o.sub ? `<small class="n-optsub">${esc(o.sub)}</small>` : ""}${o.home ? "<small class=\"n-optsub\">집에 있음</small>" : ""}</label>`;
