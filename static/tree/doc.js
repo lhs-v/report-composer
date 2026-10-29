@@ -392,7 +392,9 @@ window.Doc = (() => {
     for (const [m] of Tree.walk()) {
       const week = m.src?.week || Tree.state.draft.week;
       for (const href of [m.href, m.representative, ...(m.files || []).map(f => f.href)]) {
-        if (href) urls.set(attName(`${week}/${href}`), `/files/${week}/${I().enc(href)}`);
+        if (!href) continue;
+        const k = attName(`${week}/${href}`);
+        if (!urls.has(k)) urls.set(k, `/files/${week}/${I().enc(href)}`);   // first wins, like storage.attachments_for (setdefault)
       }
     }
     return xhtml
